@@ -111,7 +111,6 @@ def create_Dataset(data_lines, start_time_dt64, sample_interval_td64, glacier_fr
     # extract out each variable in the data_array
     time = data_array[:,0]
     temperature = data_array[:,1]
-    flag = data_array[:,2]
         
     # Make the useful measurement time array using numpy datetime64 objects
     # the file records the measurement times as fractional Julian years, which is not very useful
@@ -139,71 +138,70 @@ def create_Dataset(data_lines, start_time_dt64, sample_interval_td64, glacier_fr
     
     ## Create DataArray Objects from the measurements, add the measurement time coordinate
     temperature_da = xr.DataArray(temperature, dims='time', coords={'time':measurement_times})
-    flag_da = xr.DataArray(flag, dims='time', coords={'time':measurement_times})
     
     ## SANITY CHECK PLOTS ---------------------------------------------------------------
     
     # plot but skip last day of measurements
     # duty cycle is 20 seconds (4320 measurements per day)
-    temperature_da.plot()
-    plt.title("all/raw data")
-    plt.show()
+    # temperature_da.plot()
+    # plt.title("all/raw data")
+    # plt.show()
     
-    # 2019 data
-    if '2018' in str(start_time_dt64):
-        # plot again but skip last days of measurements
-        # duty cycle is 20 seconds (4320 measurements per day)
-        if glacier_front == 'Sverdrup glacier':
-            temperature_da[0:-4320].plot()
-            plt.title("last day removed")
-            plt.show()
-        elif glacier_front == 'Kong Oscar glacier':
-            temperature_da[4320:-4320].plot()
-            plt.title("first and last day removed")
-            plt.show()
-        elif probe_num == 'PROBE_14':
-            temperature_da[8640:-8640].plot()
-            plt.title("first two and last two days removed")
-            plt.show()
-        else: # Rink
-            temperature_da[0:-8640].plot()
-            plt.title("last two days removed")
-            plt.show()
+#     # 2019 data
+#     if '2018' in str(start_time_dt64):
+#         # plot again but skip last days of measurements
+#         # duty cycle is 20 seconds (4320 measurements per day)
+#         if glacier_front == 'Sverdrup glacier':
+#             temperature_da[0:-4320].plot()
+#             plt.title("last day removed")
+#             plt.show()
+#         elif glacier_front == 'Kong Oscar glacier':
+#             temperature_da[4320:-4320].plot()
+#             plt.title("first and last day removed")
+#             plt.show()
+#         elif probe_num == 'PROBE_14':
+#             temperature_da[8640:-8640].plot()
+#             plt.title("first two and last two days removed")
+#             plt.show()
+#         else: # Rink
+#             temperature_da[0:-8640].plot()
+#             plt.title("last two days removed")
+#             plt.show()
     
-    # 2020 data
-    if '2019' in str(start_time_dt64):
-        # plot again but skip first day and last days for storage and transit time between 2020-2021 (469 days*4320)
-        temperature_da[8640:-2026080].plot()
-        plt.title("first two days and 2020-21 data removed")
-        plt.show()
+#     # 2020 data
+#     if '2019' in str(start_time_dt64):
+#         # plot again but skip first day and last days for storage and transit time between 2020-2021 (469 days*4320)
+#         temperature_da[8640:-2026080].plot()
+#         plt.title("first two days and 2020-21 data removed")
+#         plt.show()
     
     ## ----------------------------------------------------------------------------------
     
-    ## add metadata to data arrays
-    flag_da.name = 'flag'
-    flag_da.attrs['units'] = ''
-    flag_da.attrs['seabird_var_name'] = 'flag'
-    
+    ## add metadata to data array
     temperature_da.name = 'temperature'
     temperature_da.attrs['units'] = 'C'
     temperature_da.attrs['seabird_var_name'] = 't090C'
     temperature_da.attrs['comments'] = 'ITS-90'
     temperature_da.attrs['Probe_num'] = probe_num  
     
-    # merge together the different xarray DataArray objects
-    mooring_ds = xr.merge([temperature_da, flag_da],combine_attrs="drop_conflicts")
-
+    # make it a dataset
+    mooring_ds = temperature_da.to_dataset()
+    
     return(mooring_ds)
 
 ## Function add_metadata() to add global attributes
 
 def add_metadata(mooring_ds, uuid, lat, lon, glacier_front, bottom_depth, depth_target, depth_actual, netcdf_filename, start_date, sample_interval_plain, serial_number, device_type, probe_num):
+    # get start and end dates
+    start_date = str(mooring_ds.isel(time=0).time.values)[0:10]
+    end_date   = str(mooring_ds.isel(time=-1).time.values)[0:10]
+    
     # clear copied attributes from merge
     mooring_ds.attrs = ''
     
     ## add attributes to dataset
     mooring_ds.attrs['title'] = 'OMG Narwhals mooring temperature logger Level 1 Data'
-    mooring_ds.attrs['summary'] = 'This dataset contains temperature measurements from a temperature logger sensor that was attached to an ocean mooring. This dataset was collected by the Oceans Melting Greenland (OMG) Narwhals program that will provide subannual hydrographic variability measurements in three northwest Greenland fjords. Between July 2018 to July 2020, three bottom-mounted moorings with a suite of instrumentation were deployed year-round in three glacial fjord sites in Melville Bay, West Greenland: Sverdrup Glacier, Kong Oscar Glacier, and Fisher Islands/Rink Glacier. Examination of water properties at these sites will demonstrate the presence and potential seasonality of warm, salty Atlantic Water intrusion into these marine-terminating glaciers. Additonally, during summer cruises where moorings were deployed and/or recovered, a CTD was lowered into the water to obtain full water column profiles at various locations near the glacier fronts and offshore.'
+    mooring_ds.attrs['summary'] = 'This dataset contains temperature measurements from a temperature logger sensor that was attached to an ocean mooring. This dataset was collected by the Oceans Melting Greenland (OMG) Narwhals program that will provide subannual hydrographic variability measurements in three northwest Greenland fjords. Between July 2018 to July 2020, three bottom-mounted moorings with a suite of instrumentation were deployed year-round in three glacial fjord sites in Melville Bay, West Greenland: Sverdrup Glacier, Kong Oscar Glacier, and Fisher Islands/Rink Glacier. Examination of water properties at these sites will demonstrate the presence and potential seasonality of warm, salty Atlantic Water intrusion into these marine-terminating glaciers. Additionally, during summer cruises where moorings were deployed and/or recovered, a CTD was lowered into the water to obtain full water column profiles at various locations near the glacier fronts and offshore.'
     mooring_ds.attrs['keywords'] = 'Water Temperature'
     mooring_ds.attrs['keywords_vocabulary'] = 'NASA Global Change Master Directory (GCMD) Science Keywords'
     mooring_ds.attrs['id'] = 'OMG_Narwhals_Mooring_temp_L1'
@@ -214,6 +212,7 @@ def add_metadata(mooring_ds, uuid, lat, lon, glacier_front, bottom_depth, depth_
     mooring_ds.attrs['mooring_longitude'] = lon
     mooring_ds.attrs['region'] = 'Melville Bay, West Greenland'
     mooring_ds.attrs['start_date'] = start_date
+    mooring_ds.attrs['end_date'] = end_date
     mooring_ds.attrs['glacier_front'] = glacier_front
     mooring_ds.attrs['bottom_depth'] = bottom_depth
     mooring_ds.attrs['filename'] = netcdf_filename
@@ -248,8 +247,8 @@ def add_metadata(mooring_ds, uuid, lat, lon, glacier_front, bottom_depth, depth_
     mooring_ds.attrs['publisher_url'] = 'https://podaac.jpl.nasa.gov/'
     mooring_ds.attrs['publisher_type'] = 'group'
     
-    with xr.set_options(display_style="html"):
-        display(mooring_ds)
+    # with xr.set_options(display_style="html"):
+    #     display(mooring_ds)
 
     return(mooring_ds)
 

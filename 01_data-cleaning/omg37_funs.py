@@ -115,7 +115,6 @@ def create_Dataset(glacier_front, data_lines, start_time_dt64, sample_interval_t
     salinity = data_array[:,5]
     temperature = data_array[:,6]
     time = data_array[:,7]
-    flag = data_array[:,8]
     
     # Make the useful measurement time array using numpy datetime64 objects
     # the file records the measurement times as fractional Julian years, which is not very useful
@@ -149,7 +148,6 @@ def create_Dataset(glacier_front, data_lines, start_time_dt64, sample_interval_t
     pressure_da = xr.DataArray(pressure, dims='time', coords={'time':measurement_times})
     salinity_da = xr.DataArray(salinity, dims='time', coords={'time':measurement_times})
     temperature_da = xr.DataArray(temperature, dims='time', coords={'time':measurement_times})
-    flag_da = xr.DataArray(flag, dims='time', coords={'time':measurement_times})
     
     ## add variable that indexes outliers/extreme data points from depth spikes 
     ## 2019
@@ -198,71 +196,6 @@ def create_Dataset(glacier_front, data_lines, start_time_dt64, sample_interval_t
 #             flag_depth[i] = 1
 #     flag_depth_da = xr.DataArray(flag_depth, dims='time', coords={'time':measurement_times})
     
-    ## SANITY CHECK PLOTS ---------------------------------------------------------------
-    if '2018' in str(start_time_dt64):
-        depth_da.plot()
-        plt.title('raw data')
-        plt.gca().invert_yaxis()
-        plt.show()
-        
-        ## depth (last 2 days removed) and outlier points
-        plt.figure(figsize = [20,6])
-        # depth_da[:-960].plot()
-        depth_da[:-480].plot()
-        plt.scatter(depth_da.time[np.where(flag_depth == 1)], depth_da[np.where(flag_depth == 1)], color='r')
-        plt.title('depth (last 2 days removed) and outlier points')
-        plt.gca().invert_yaxis()
-        plt.show()
-        
-        ## depth (last 2 days removed) and outlier points removed
-        plt.figure(figsize = [20,6])
-        plt.plot(depth_da.time[np.where(flag_depth == 0)][:-960], depth_da[np.where(flag_depth == 0)][:-960], ".")
-        plt.title('depth with outlier data removed')
-        plt.gca().invert_yaxis()
-        plt.show()
-        
-        ## SANITY CHECK PLOT using potential temperature
-        # skip last 2 days of measurements that were on the deck
-        # there are 480 measurements in one day (duty cycle = 180 seconds)
-        potential_temperature_da[:-960].plot()
-        plt.show()
-        
-    if '2019' in str(start_time_dt64):
-        depth_da.plot()
-        plt.title('raw data')
-        plt.gca().invert_yaxis()
-        plt.show()
-        
-        ## depth and outlier points
-        # depth_da[480:-227520].plot() # skip measurements from storage and transit 2020-2021
-        depth_da[:-226560].plot() # skip measurements from storage and transit 2020-2021
-        plt.scatter(depth_da.time[np.where(flag_depth == 1)], depth_da[np.where(flag_depth == 1)], color='r')
-        plt.title('depth (truncated) with outlier points')
-        plt.gca().invert_yaxis()
-        plt.show()
-        
-        ## depth and outlier points
-        depth_da.plot() # skip measurements from storage and transit 2020-2021
-        plt.scatter(depth_da.time[np.where(flag_depth == 1)], depth_da[np.where(flag_depth == 1)], color='r')
-        plt.ylim(window_low-3,window_high+3)
-        plt.title('depth (truncated) with outlier points')
-        plt.gca().invert_yaxis()
-        plt.show()
-        
-        # depth and outlier points
-        depth_da[np.where(flag_depth == 0)][480:].plot() # skip measurements from storage and transit 2020-2021
-        plt.title('depth with outlier data removed')
-        plt.gca().invert_yaxis()
-        plt.show()
-        
-        ## SANITY CHECK PLOT using temperature
-        # skip measurements from storage and transit 2020-2021
-        # there are 480 measurements in one day (duty cycle = 180 seconds)
-        temperature_da[480:-227520].plot()
-        plt.show()
-    
-    ## ----------------------------------------------------------------------------------
-    
     ## add metadata to data arrays
     
     conductivity_da.name = 'conductivity'
@@ -297,10 +230,6 @@ def create_Dataset(glacier_front, data_lines, start_time_dt64, sample_interval_t
     temperature_da.attrs['seabird_var_name'] = 'tv290C'
     temperature_da.attrs['comments'] = 'ITS-90'
     
-    flag_da.name = 'flag'
-    flag_da.attrs['units'] = ''
-    flag_da.attrs['seabird_var_name'] = 'flag'
-    
     flag_depth_da.name = 'flag_depth'
     flag_depth_da.attrs['units'] = ''
     flag_depth_da.attrs['comments'] = "Index for outliers where 0 corresponds to reasonable observations and 1 indicates extreme values based on spikes in depth observations likely due to iceberg events pushing the mooring instruments downward. Variable measurements corresponding to a 1 in 'flag_depth' can be removed."
@@ -309,11 +238,10 @@ def create_Dataset(glacier_front, data_lines, start_time_dt64, sample_interval_t
     # merge together the different xarray DataArray objects
     mooring_ds = xr.merge([conductivity_da,density_da, depth_da,\
                        potential_temperature_da, pressure_da,\
-                       salinity_da, temperature_da, flag_da, flag_depth_da],
+                       salinity_da, temperature_da, flag_depth_da],
                       combine_attrs='drop_conflicts')
 
     return(mooring_ds)
-
 
 
 ## Function add_metadata() to add global attributes
