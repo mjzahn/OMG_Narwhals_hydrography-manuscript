@@ -26,7 +26,6 @@ def sbe37_avg(netcdf, mooring_L2_dir, avg_length):
     pressure = data.pressure.resample(time=avg_length, label="left").mean('time') # average pressure
     salinity = data.salinity.resample(time=avg_length, label="left").mean('time') # average salinity
     temperature = data.temperature.resample(time=avg_length, label="left").mean('time') # average temp
-    flag = data.flag.resample(time=avg_length, label="left").mean('time') # average flag
     time = data.time.resample(time=avg_length, label="left").mean('time') # time coordinates
     
     # Create DataArray Objects from the measurements, add the measurement time coordinate
@@ -37,7 +36,6 @@ def sbe37_avg(netcdf, mooring_L2_dir, avg_length):
     pressure_da = xr.DataArray(pressure, dims='time', coords={'time':time})
     salinity_da = xr.DataArray(salinity, dims='time', coords={'time':time})
     temperature_da = xr.DataArray(temperature, dims='time', coords={'time':time})
-    flag_da = xr.DataArray(flag, dims='time', coords={'time':time})
     
     # Add metadata to the DataArray objects - sbe37_1
     conductivity_da.name = 'conductivity'
@@ -57,17 +55,14 @@ def sbe37_avg(netcdf, mooring_L2_dir, avg_length):
     
     salinity_da.name = 'salinity'
     salinity_da.attrs = sbe37.salinity.attrs
-    
-    flag_da.name = 'flag'
-    flag_da.attrs = sbe37.flag.attrs
-    
+
     temperature_da.name = 'temperature'
     temperature_da.attrs = sbe37.temperature.attrs
     
     # merge together the different xarray DataArray objects
     sbe37_ds = xr.merge([conductivity_da,density_da, depth_da,\
                        potential_temperature_da, pressure_da,\
-                       salinity_da, temperature_da, flag_da])
+                       salinity_da, temperature_da])
     # drop nans
     sbe37_ds = sbe37_ds.dropna(dim="time")
     
@@ -110,7 +105,7 @@ def sbe56_avg(netcdf, mooring_sbe56_dir, netcdf_sbe37, mooring_L2_dir, avg_lengt
     ## remove depth spikes in sbe56 data that are flagged in sbe37 data --------------------
     # Fix time dimension to remove seconds because they differ between sbe37 and sbe56
     time_sel = sbe37.time[np.where(sbe37.flag_depth == 1)]
-    # retain dat and, hour minute for sbe37 data
+    # retain date and, hour minute for sbe37 data
     # NOTE: when I retained date, hour, AND minute, I was not able to remove all of the flagged sbe56 observations
     time_tmp = []
     for ti,t in enumerate(time_sel.time.values):
@@ -136,12 +131,12 @@ def sbe56_avg(netcdf, mooring_sbe56_dir, netcdf_sbe37, mooring_L2_dir, avg_lengt
     
     data_new = data.sel(time=data.time[~data.time.isin(time_flag_all)])
     
-    print('length of raw sbe56 data: ', len(data.time))
-    print('length of sbe56 data with flagged data removed: ',len(data_new.time))
-    print('number of sbe56 observations removed: ', len(data.time) - len(data_new.time))
-    print('length of raw sbe37 data: ',len(sbe37.time))
-    print('length of sbe37 data with flagged data removed: ',len(sbe37.time[np.where(sbe37.flag_depth == 0)]))
-    print('number of sbe37 observations removed: ', len(sbe37.time) - len(sbe37.time[np.where(sbe37.flag_depth == 0)]))
+    # print('length of raw sbe56 data: ', len(data.time))
+    # print('length of sbe56 data with flagged data removed: ',len(data_new.time))
+    # print('number of sbe56 observations removed: ', len(data.time) - len(data_new.time))
+    # print('length of raw sbe37 data: ',len(sbe37.time))
+    # print('length of sbe37 data with flagged data removed: ',len(sbe37.time[np.where(sbe37.flag_depth == 0)]))
+    # print('number of sbe37 observations removed: ', len(sbe37.time) - len(sbe37.time[np.where(sbe37.flag_depth == 0)]))
 
     ## sanity check plot comparisons
     if show_plot == True:
@@ -157,12 +152,10 @@ def sbe56_avg(netcdf, mooring_sbe56_dir, netcdf_sbe37, mooring_L2_dir, avg_lengt
     data_new = data_new.sel(time=truncate)
     
     temperature = data_new.temperature.resample(time=avg_length, skipna=True, base=0).mean('time') # average temp
-    flag = data_new.flag.resample(time=avg_length, skipna=True, base=0).mean('time') # average flag
     time = data_new.time.resample(time=avg_length, skipna=True, base=0).mean('time') # time coordinates
     
     # Create DataArray Objects from the measurements, add the measurement time coordinate
     temperature_da = xr.DataArray(temperature, dims='time', coords={'time':time})
-    flag_da = xr.DataArray(flag, dims='time', coords={'time':time})
     
     ## plot newly averaged data
     if show_plot == True:
@@ -171,15 +164,13 @@ def sbe56_avg(netcdf, mooring_sbe56_dir, netcdf_sbe37, mooring_L2_dir, avg_lengt
         plt.show()
     
     # Add metadata to the DataArray objects
-    flag_da.name = 'flag'
-    flag_da.attrs = data.flag.attrs
     temperature_da.name = 'temperature'
     temperature_da.attrs = data.temperature.attrs
     
-    # merge together the different xarray DataArray objects
-    sbe56_ds = xr.merge([temperature_da, flag_da])
+    # make DataArray a dataset
+    sbe56_dataset = temperature_da.to_dataset()
     # drop nans
-    sbe56_ds = sbe56_ds.dropna(dim="time")
+    sbe56_ds = sbe56_dataset.dropna(dim="time")
     
     # clear copied attributes from merge
     sbe56_ds.attrs = ''
@@ -203,12 +194,6 @@ def sbe56_avg(netcdf, mooring_sbe56_dir, netcdf_sbe37, mooring_L2_dir, avg_lengt
         sbe56_ds.time.values[:] = sbe56_time_tmp_array1[:] 
         
     return(sbe56_ds)
-
-# # original, single daily average for records
-# temperature_1 = data.temperature.resample(time='1D').mean('time') # average temp
-# flag_1 = data.flag.resample(time='1D').mean('time') # average flag
-# time_1 = data.time.resample(time='1D').mean('time') # time coordinates
-
 
 ## function to add depth dimension and coordinate to sbe37 data
 def sbe37_add_dims(sbe37_ds):
@@ -264,13 +249,6 @@ def sbe56_add_dims(probe):
     probe_T = probe_T.expand_dims(dim={'Depth_temp':1},axis=0)
     probe_T = probe_T.assign_coords(SN_temp=("Depth_temp", [sbe56_serial]))
     return(probe_T)
-
-## retaining old, long-hand version as backup
-# sbe56_16_T = sbe56_16.temperature.copy(deep=True)
-# sbe56_serial = 'SBE56_' + sbe56_16.attrs['serial_number']
-# sbe56_16_T = sbe56_16_T.expand_dims(dim={'profile':1},axis=0)
-# sbe56_16_T = sbe56_16_T.assign_coords({"SN_Temperature": ('profile', [sbe56_serial])})
-
 
 ## Define helper routine for proper encoding to save netCDF
 
