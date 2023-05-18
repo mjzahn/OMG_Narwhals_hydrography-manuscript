@@ -272,8 +272,8 @@ def add_metadata(ctd_profile_ds, uuid, lat, lon, seafloor_depth, cast_depth, cas
     ctd_profile_ds.attrs['publisher_type'] = 'group'
     
     
-    with xr.set_options(display_style="html"):
-        display(ctd_profile_ds)
+    # with xr.set_options(display_style="html"):
+    #     display(ctd_profile_ds)
 
     return(ctd_profile_ds)
 
