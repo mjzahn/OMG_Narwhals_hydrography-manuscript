@@ -188,13 +188,6 @@ def create_Dataset(glacier_front, data_lines, start_time_dt64, sample_interval_t
         flag_depth[np.where((depth_da < window_low) | (depth_da > window_high))] = 1
         flag_depth[np.where(flag_depth != 1)] = 0
         flag_depth_da = xr.DataArray(flag_depth, dims='time', coords={'time':measurement_times})
- 
-#     # This was the long way  
-#     flag_depth = np.zeros(len(depth_da))
-#     for i in range(len(depth_da)):
-#         if (depth_da[i] < window_low) | (depth_da[i] > window_high):
-#             flag_depth[i] = 1
-#     flag_depth_da = xr.DataArray(flag_depth, dims='time', coords={'time':measurement_times})
     
     ## add metadata to data arrays
     
