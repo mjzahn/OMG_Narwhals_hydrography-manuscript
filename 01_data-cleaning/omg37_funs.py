@@ -10,6 +10,7 @@ from pathlib import Path
 from pprint import pprint
 import xarray as xr
 import netCDF4 as nc4
+from datetime import datetime
 
 
 ## Function open_omg_file() to open file and extract header
@@ -63,7 +64,7 @@ def open_omg_file(file):
             serial_number = h.split('SerialNumber=')[1][1:-2]
             
     # convert start_time and sample_interval to plain language for attributes of Dataset
-    start_date = ' '.join(start_time[0:3])
+    # start_date = ' '.join(start_time[0:3])
     sample_interval_plain = ' '.join(sample_interval)
     
     # Convert the measurement start time and sample interval into datetime64 objects
@@ -88,11 +89,11 @@ def open_omg_file(file):
     elif sample_interval[1] == 'hours':
         sample_interval_td64 = np.timedelta64(sample_interval[0], 'h')
             
-    return(data_lines, device_type, serial_number, start_time_dt64, start_date, sample_interval_plain, sample_interval_td64, var_names)
+    return(data_lines, device_type, serial_number, start_time_dt64, sample_interval_plain, sample_interval_td64, var_names)
 
 ## Function create_Dataset()
 ### extracts data and creates xarray data arrays and then a DataSet Object (collection of all DataArray objects)
-def create_Dataset(glacier_front, data_lines, start_time_dt64, sample_interval_td64):
+def create_Dataset(glacier_front, data_lines, start_time_dt64, sample_interval_td64, lat, lon):
     # extract out numbers from the text data lines
     data_list =[]
     
@@ -134,20 +135,21 @@ def create_Dataset(glacier_front, data_lines, start_time_dt64, sample_interval_t
     pprint(measurement_times[0:5])
     
     ## recording start time
-    print('recording start time: ', measurement_times[0])
+    start_time = measurement_times[0]
+    print('recording start time: ', start_time)
     
     ## recording end time
     end_time = measurement_times[len(measurement_times)-1]
     print('recording end time: ', end_time)
     
     ## Create DataArray Objects from the measurements, add the measurement time coordinate
-    conductivity_da = xr.DataArray(conductivity, dims='time', coords={'time':measurement_times})
-    density_da = xr.DataArray(density, dims='time', coords={'time':measurement_times})
-    depth_da = xr.DataArray(depth, dims='time', coords={'time':measurement_times})
-    potential_temperature_da = xr.DataArray(potential_temperature, dims='time', coords={'time':measurement_times})
-    pressure_da = xr.DataArray(pressure, dims='time', coords={'time':measurement_times})
-    salinity_da = xr.DataArray(salinity, dims='time', coords={'time':measurement_times})
-    temperature_da = xr.DataArray(temperature, dims='time', coords={'time':measurement_times})
+    conductivity_da = xr.DataArray(conductivity, dims=['time'], coords={'time':measurement_times})
+    density_da = xr.DataArray(density, dims=['time'], coords={'time':measurement_times})
+    depth_da = xr.DataArray(depth, dims=['time'], coords={'time':measurement_times})
+    potential_temperature_da = xr.DataArray(potential_temperature, dims=['time'], coords={'time':measurement_times})
+    pressure_da = xr.DataArray(pressure, dims=['time'], coords={'time':measurement_times})
+    salinity_da = xr.DataArray(salinity, dims=['time'], coords={'time':measurement_times})
+    temperature_da = xr.DataArray(temperature, dims=['time'], coords={'time':measurement_times})
     
     ## add variable that indexes outliers/extreme data points from depth spikes 
     ## 2019
@@ -168,7 +170,7 @@ def create_Dataset(glacier_front, data_lines, start_time_dt64, sample_interval_t
         
         flag_depth_norm[np.where(flag_depth_norm != 1)] = 0
         flag_depth = flag_depth_norm
-        flag_depth_da = xr.DataArray(flag_depth_norm, dims='time', coords={'time':measurement_times})
+        flag_depth_da = xr.DataArray(flag_depth_norm, dims=['time'], coords={'time':measurement_times})
         
     if '2018' in str(start_time_dt64) and glacier_front != 'Kong Oscar glacier':
         window_low = np.mean(depth_da[30000:-20000]) - 1.5
@@ -177,7 +179,7 @@ def create_Dataset(glacier_front, data_lines, start_time_dt64, sample_interval_t
         flag_depth = depth_da.copy(deep=True)
         flag_depth[np.where((depth_da < window_low) | (depth_da > window_high))] = 1
         flag_depth[np.where(flag_depth != 1)] = 0
-        flag_depth_da = xr.DataArray(flag_depth, dims='time', coords={'time':measurement_times})
+        flag_depth_da = xr.DataArray(flag_depth, dims=['time'], coords={'time':measurement_times})
         
     ## 2020
     if '2019' in str(start_time_dt64):
@@ -187,45 +189,86 @@ def create_Dataset(glacier_front, data_lines, start_time_dt64, sample_interval_t
         flag_depth = depth_da.copy(deep=True)
         flag_depth[np.where((depth_da < window_low) | (depth_da > window_high))] = 1
         flag_depth[np.where(flag_depth != 1)] = 0
-        flag_depth_da = xr.DataArray(flag_depth, dims='time', coords={'time':measurement_times})
+        flag_depth_da = xr.DataArray(flag_depth, dims=['time'], coords={'time':measurement_times})
     
     ## add metadata to data arrays
     
     conductivity_da.name = 'conductivity'
+    conductivity_da.attrs['long_name'] = 'sea water electrical conductivity'
+    conductivity_da.attrs['standard_name'] = 'sea_water_electrical_conductivity'
     conductivity_da.attrs['units'] = 'S/m'
+    conductivity_da.attrs['coverage_content_type'] = 'physicalMeasurement'
     conductivity_da.attrs['seabird_var_name'] = 'cond0S/m'
+    conductivity_da.attrs['valid_min'] = float(0)
+    conductivity_da.attrs['valid_max'] = float(6)
     
     density_da.name = 'density'
+    density_da.attrs['long_name'] = 'sea water density'
+    density_da.attrs['standard_name'] = 'sea_water_density'
     density_da.attrs['units'] = 'kg m-3'
+    density_da.attrs['coverage_content_type'] = 'physicalMeasurement'
     density_da.attrs['seabird_var_name'] = 'density00'
+    density_da.attrs['valid_min'] = float(999)
+    density_da.attrs['valid_max'] = float(1045)
     
     depth_da.name = 'depth'
-    depth_da.attrs['units'] = 'm'
+    depth_da.attrs['long_name'] = 'depth'
+    depth_da.attrs['standard_name'] = 'depth'
+    depth_da.attrs['units'] = 'meters'
+    depth_da.attrs['positive'] = 'down'
+    depth_da.attrs['axis'] = 'Z'
+    depth_da.attrs['coverage_content_type'] = 'coordinate'
     depth_da.attrs['seabird_var_name'] = 'depSM'
+    depth_da.attrs['valid_min'] = float(0)
+    depth_da.attrs['valid_max'] = float(1000)
     
     potential_temperature_da.name = 'potential_temperature'
-    potential_temperature_da.attrs['units'] = 'C'
+    potential_temperature_da.attrs['long_name'] = 'sea water potential temperature'
+    potential_temperature_da.attrs['standard_name'] = 'sea_water_potential_temperature'
+    potential_temperature_da.attrs['units'] = 'degrees_C'
+    potential_temperature_da.attrs['coverage_content_type'] = 'physicalMeasurement'
     potential_temperature_da.attrs['seabird_var_name'] = 'potemp090C'
     potential_temperature_da.attrs['comments'] = 'ITS-90'
+    potential_temperature_da.attrs['valid_min'] = float(-2.2)
+    potential_temperature_da.attrs['valid_max'] = float(35)
     
     pressure_da.name = 'pressure'
-    pressure_da.attrs['units'] = 'db'
+    pressure_da.attrs['long_name'] = 'sea water pressure'
+    pressure_da.attrs['standard_name'] = 'sea_water_pressure'
+    pressure_da.attrs['units'] = 'dBar'
+    pressure_da.attrs['coverage_content_type'] = 'physicalMeasurement'
     pressure_da.attrs['seabird_var_name'] = 'prdM'
+    pressure_da.attrs['valid_min'] = float(0)
+    pressure_da.attrs['valid_max'] = float(1000)
     pressure_da.attrs['comments'] = 'strain gauge'
     
     salinity_da.name = 'salinity'
-    salinity_da.attrs['units'] = 'PSU'
+    salinity_da.attrs['long_name'] = 'sea water practical salinity'
+    salinity_da.attrs['standard_name'] = 'sea_water_practical_salinity'
+    salinity_da.attrs['units'] = '1'
+    salinity_da.attrs['coverage_content_type'] = 'physicalMeasurement'
     salinity_da.attrs['seabird_var_name'] = 'sal00'
-    salinity_da.attrs['comments'] = 'Practical'
+    salinity_da.attrs['valid_min'] = float(0)
+    salinity_da.attrs['valid_max'] = float(45)
     
     temperature_da.name = 'temperature'
-    temperature_da.attrs['units'] = 'C'
+    temperature_da.attrs['long_name'] = 'sea water temperature'
+    temperature_da.attrs['standard_name'] = 'sea_water_temperature'
+    temperature_da.attrs['units'] = 'degrees_C'
+    temperature_da.attrs['coverage_content_type'] = 'physicalMeasurement'
     temperature_da.attrs['seabird_var_name'] = 'tv290C'
     temperature_da.attrs['comments'] = 'ITS-90'
+    temperature_da.attrs['valid_min'] = float(-2.2)
+    temperature_da.attrs['valid_max'] = float(35)
     
     flag_depth_da.name = 'flag_depth'
-    flag_depth_da.attrs['units'] = ''
-    flag_depth_da.attrs['comments'] = "Index for outliers where 0 corresponds to reasonable observations and 1 indicates extreme values based on spikes in depth observations likely due to iceberg events pushing the mooring instruments downward. Variable measurements corresponding to a 1 in 'flag_depth' can be removed."
+    flag_depth_da.attrs['long_name'] = 'quality flag for depth measurements'
+    flag_depth_da.attrs['standard_name'] = 'quality_flag'
+    flag_depth_da.attrs['units'] = '1'
+    flag_depth_da.attrs['flag_values'] = float(0), float(1)
+    flag_depth_da.attrs['flag_meanings'] = 'depth_consistent depth_spike'
+    flag_depth_da.attrs['coverage_content_type'] = 'qualityInformation'
+    flag_depth_da.attrs['comments'] = "Recommended to use flag_depth=0 for consistent results. flag_depth=1 marks any spikes in depth observations when mooring instruments were pushed down (e.g., from icebergs)."
     
     
     # merge together the different xarray DataArray objects
@@ -233,61 +276,84 @@ def create_Dataset(glacier_front, data_lines, start_time_dt64, sample_interval_t
                        potential_temperature_da, pressure_da,\
                        salinity_da, temperature_da, flag_depth_da],
                       combine_attrs='drop_conflicts')
-
-    return(mooring_ds)
-
+    
+    # add time dimension attributes
+    mooring_ds.time.attrs['long_name'] = 'time'
+    mooring_ds.time.attrs['standard_name'] = 'time'
+    mooring_ds.time.attrs['axis'] = 'T'
+    mooring_ds.time.attrs['coverage_content_type'] = 'coordinate'
+    
+    return(mooring_ds, start_time, end_time)
 
 ## Function add_metadata() to add global attributes
 
-def add_metadata(mooring_ds, uuid, lat, lon, start_date, glacier_front, bottom_depth, netcdf_filename, serial_number, device_type, depth_target, depth_actual, sample_interval_plain):
+def add_metadata(mooring_ds, uuid, lat, lon, glacier_front, bottom_depth, netcdf_filename, serial_number, device_type, depth_target, depth_actual, sample_interval_plain):
+    
+    # get recording duration from start and end times
+    start_time = mooring_ds.time[0].values
+    end_time = mooring_ds.time[-1].values
+    tdelta = pd.Timedelta(end_time - start_time).isoformat()
+    
     # clear copied attributes from merge
     mooring_ds.attrs = ''
     
     ## add attributes to dataset
-    mooring_ds.attrs['title'] = 'OMG Narwhals mooring CTD Level 2 Data'
-    mooring_ds.attrs['summary'] = 'This dataset contains conductivity, temperature, and pressure measurements from a CTD instrument that was attached to an ocean mooring. It also contains derived variables: depth, salinity, density, and potential temperature. This dataset was collected by the Oceans Melting Greenland (OMG) Narwhals program that will provide subannual hydrographic variability measurements in three northwest Greenland fjords. Between July 2018 to July 2020, three bottom-mounted moorings with a suite of instrumentation were deployed year-round in three glacial fjord sites in Melville Bay, West Greenland: Sverdrup Glacier, Kong Oscar Glacier, and Fisher Islands/Rink Glacier. Examination of water properties at these sites will demonstrate the presence and potential seasonality of warm, salty Atlantic Water intrusion into these marine-terminating glaciers. Additionally, during summer cruises where moorings were deployed and/or recovered, a CTD was lowered into the water to obtain full water column profiles at various locations near the glacier fronts and offshore.'
+    mooring_ds.attrs['title'] = 'OMG Narwhals Moored CTD Level 2 Data'
+    mooring_ds.attrs['summary'] = 'This dataset contains conductivity, temperature, and pressure measurements from a CTD instrument attached to an ocean mooring. It also contains derived variables: depth, salinity, density, and potential temperature. This dataset was collected by the Oceans Melting Greenland (OMG) Narwhals program that provides two years of oceanographic measurements from Melville Bay, northwest Greenland. Between July 2018 to July 2020, three bottom-mounted moorings with a suite of instrumentation were deployed in front of three glaciers: Sverdrup Glacier, Kong Oscar Glacier, and Rink Glacier.'
     mooring_ds.attrs['keywords'] = 'Conductivity, Salinity, Water Depth, Water Temperature'
     mooring_ds.attrs['keywords_vocabulary'] = 'NASA Global Change Master Directory (GCMD) Science Keywords'
+    mooring_ds.attrs['Conventions'] = 'CF-1.8, ACDD-1.3'
+    mooring_ds.attrs['standard_name_vocabulary'] = 'NetCDF Climate and Forecast (CF) Metadata Convention'
     mooring_ds.attrs['id'] = 'OMG_Narwhals_Mooring_CTD_L2'
     mooring_ds.attrs['uuid'] = uuid
-    mooring_ds.attrs['platform'] = 'R/V Sanna'
+    mooring_ds.attrs['featureType'] = "timeSeries"
+    mooring_ds.attrs['cdm_data_type'] = "Station"
+    mooring_ds.attrs['platform'] = 'mooring'
     mooring_ds.attrs['mooring_deployment'] = '2018-2019'
     mooring_ds.attrs['mooring_latitude'] = lat
     mooring_ds.attrs['mooring_longitude'] = lon
-    mooring_ds.attrs['region'] = 'Melville Bay, West Greenland'
-    mooring_ds.attrs['start_date'] = start_date
+    mooring_ds.attrs['region'] = 'Melville Bay, northwest Greenland'
     mooring_ds.attrs['glacier_front'] = glacier_front
     mooring_ds.attrs['bottom_depth'] = bottom_depth
     mooring_ds.attrs['filename'] = netcdf_filename
     mooring_ds.attrs['serial_number'] = serial_number
-    mooring_ds.attrs['device_type'] = device_type
+    mooring_ds.attrs['instrument'] = device_type
     mooring_ds.attrs['target_sensor_depth'] = depth_target
     mooring_ds.attrs['actual_sensor_depth'] = depth_actual
     mooring_ds.attrs['sample_interval'] = sample_interval_plain
-    
+    mooring_ds.attrs['history'] = "CTD dataset was created from processed *.cnv files that were converted from the instrument's output *.hex file."
     mooring_ds.attrs['source'] = 'Temperature and salinity data were collected using Conductivity Temperature Depth (CTD) instruments purchased from Sea-Bird Electronics, Inc. that were attached to moorings.'
     mooring_ds.attrs['processing_level'] = 'L2'
     
-    mooring_ds.attrs['acknowledgements'] = "This research was carried out by the Jet Propulsion Laboratory, managed by the California Institute of Technology under a contract with the National Aeronautics and Space Administration, the University of Washington's Applied Physics Laboratory and School of Aquatic and Fishery Sciences, and the Greenland Institute of Natural Resources."
+    mooring_ds.attrs['acknowledgement'] = "This research was carried out by the Jet Propulsion Laboratory, managed by the California Institute of Technology under a contract with the National Aeronautics and Space Administration, the University of Washington's Applied Physics Laboratory and School of Aquatic and Fishery Sciences, and the Greenland Institute of Natural Resources."
     mooring_ds.attrs['license'] = 'Public Domain'
     mooring_ds.attrs['product_version'] = '1.0'
     # mooring_ds.attrs['references'] = '' # DOI number
-    mooring_ds.attrs['creator_name'] = 'Marie J. Zahn, Kristin L. Laidre, Malene J. Simon, and Ian Fenty'
-    mooring_ds.attrs['creator_email'] = 'mzahn@uw.edu; klaidre@uw.edu; masi@natur.gl; ian.fenty@jpl.nasa.gov'
-    mooring_ds.attrs['creator_url'] = 'https://podaac.jpl.nasa.gov/'
+    mooring_ds.attrs['creator_name'] = 'OMG Narwhals Science Team'
     mooring_ds.attrs['creator_type'] = 'group'
-    mooring_ds.attrs['creator_institution'] = 'University of Washington; Greenland Institute of Natural Resources; NASA Jet Propulsion Laboratory'
+    mooring_ds.attrs['creator_institution'] = 'University of Washington; Greenland Institute of Natural Resources; NASA Jet Propulsion Laboratory (JPL)'
     mooring_ds.attrs['institution'] = 'University of Washington'
+    mooring_ds.attrs['project'] = 'Oceans Melting Greenland (OMG) Narwhals'
+    mooring_ds.attrs['contributor_name'] = 'Marie J. Zahn, Kristin L. Laidre, Malene J. Simon, Ian Fenty'
+    mooring_ds.attrs['contributor_role'] = "author, principal investigator, co-investigator, co-investigator" 
+    mooring_ds.attrs['contributor_email'] = 'mzahn@uw.edu; klaidre@uw.edu; masi@natur.gl; ian.fenty@jpl.nasa.gov'
     mooring_ds.attrs['naming_authority'] = 'gov.nasa.jpl'
-    mooring_ds.attrs['project'] = 'Oceans Melting Greenland (OMG) Narwhals project'
-    mooring_ds.attrs['program'] = 'NASA Physical Oceanography and Office of Naval Research (ONR) Marine Mammals and Biology Program'
-    mooring_ds.attrs['contributor_name'] = 'OMG Narwhals Science Team'
-    mooring_ds.attrs['contributor_role'] = 'OMG Narwhals Science Team performed mooring deployments and recoveries to collect data and performed initial processing.'
+    mooring_ds.attrs['program'] = 'NASA Earth Venture Suborbital-2 (EVS-2) and Office of Naval Research (ONR) Marine Mammals and Biology Program'
     mooring_ds.attrs['publisher_name'] = 'Physical Oceanography Distributed Active Archive Center (PO.DAAC)'
-    mooring_ds.attrs['publisher_institution'] = 'PO.DAAC'
+    mooring_ds.attrs['publisher_institution'] = 'NASA Jet Propulsion Laboratory (JPL)'
     mooring_ds.attrs['publisher_email'] = 'podaac@podaac.jpl.nasa.gov'
     mooring_ds.attrs['publisher_url'] = 'https://podaac.jpl.nasa.gov/'
     mooring_ds.attrs['publisher_type'] = 'group'
+    mooring_ds.attrs['geospatial_lat_min'] = lat
+    mooring_ds.attrs['geospatial_lat_max'] = lat
+    mooring_ds.attrs['geospatial_lat_units'] = "degrees_north"
+    mooring_ds.attrs['geospatial_lon_min'] = lon
+    mooring_ds.attrs['geospatial_lon_max'] = lon
+    mooring_ds.attrs['geospatial_lon_units'] = "degrees_east"
+    mooring_ds.attrs['time_coverage_start'] = str(start_time)[:-10]
+    mooring_ds.attrs['time_coverage_end'] = str(end_time)[:-10]
+    mooring_ds.attrs['time_coverage_duration'] = tdelta
+    mooring_ds.attrs['date_created'] = datetime.now().strftime("%Y-%m-%dT%H:%M:%S")
     
     with xr.set_options(display_style="html"):
         display(mooring_ds)
