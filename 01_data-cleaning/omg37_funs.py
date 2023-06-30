@@ -166,45 +166,45 @@ def create_Dataset(glacier_front, data_lines, start_time_dt64, sample_interval_t
     salinity_da = xr.DataArray([salinity], dims=['station','time'], coords={'time':measurement_times, 'station':station})
     temperature_da = xr.DataArray([temperature], dims=['station','time'], coords={'time':measurement_times, 'station':station})
     
-#     ## add variable that indexes outliers/extreme data points from depth spikes 
-#     ## 2019
-#     if '2018' in str(start_time_dt64) and glacier_front == 'Kong Oscar glacier':
+    ## add variable that indexes outliers/extreme data points from depth spikes 
+    ## 2019
+    if '2018' in str(start_time_dt64) and glacier_front == 'Kong Oscar glacier':
         
-#         flag_depth = depth_da.copy(deep=True)
-#         # spikes in depth data (separate from dragging events)
-#         flag_depth_norm = flag_depth - flag_depth.isel(time = 0) # normalize depth data around first observation
-#         flag_depth_norm.loc['2018-08-25':'2018-08-31'][flag_depth_norm.loc['2018-08-25':'2018-08-31'] > 1.5] = 1 # mean of -0.24395774
-#         flag_depth_norm.loc['2018-10-01':'2018-10-11'][flag_depth_norm.loc['2018-10-01':'2018-10-11'] > -1.5] = 1 # mean of -2.62526818
-#         flag_depth_norm.loc['2019-06-29':'2019-07-28'][flag_depth_norm.loc['2019-06-29':'2019-07-28'] > 8] = 1 # mean of 6.87850924
+        flag_depth = depth_da.isel(station=0).copy(deep=True)
+        # spikes in depth data (separate from dragging events)
+        flag_depth_norm = flag_depth - flag_depth.isel(time = 0) # normalize depth data around first observation
+        flag_depth_norm.loc['2018-08-25':'2018-08-31'][flag_depth_norm.loc['2018-08-25':'2018-08-31'] > 1.5] = 1 # mean of -0.24395774
+        flag_depth_norm.loc['2018-10-01':'2018-10-11'][flag_depth_norm.loc['2018-10-01':'2018-10-11'] > -1.5] = 1 # mean of -2.62526818
+        flag_depth_norm.loc['2019-06-29':'2019-07-28'][flag_depth_norm.loc['2019-06-29':'2019-07-28'] > 8] = 1 # mean of 6.87850924
         
-#         # dragging periods
-#         flag_depth_norm.loc['2018-09-02T00:55':'2018-09-02T09:35'] = 1 # drag 1
-#         flag_depth_norm.loc['2018-09-07T17:40':'2018-09-07T22:56'] = 1 # drag 2
-#         flag_depth_norm.loc['2018-10-12T18:40':'2018-10-13T13:00'] = 1 # drag 3
-#         flag_depth_norm.loc['2019-07-28T19:32':'2019-07-29T09:30'] = 1 # drag 4
+        # dragging periods
+        flag_depth_norm.loc['2018-09-02T00:55':'2018-09-02T09:35'] = 1 # drag 1
+        flag_depth_norm.loc['2018-09-07T17:40':'2018-09-07T22:56'] = 1 # drag 2
+        flag_depth_norm.loc['2018-10-12T18:40':'2018-10-13T13:00'] = 1 # drag 3
+        flag_depth_norm.loc['2019-07-28T19:32':'2019-07-29T09:30'] = 1 # drag 4
         
-#         flag_depth_norm[np.where(flag_depth_norm != 1)] = 0
-#         flag_depth = flag_depth_norm
-#         flag_depth_da = xr.DataArray([flag_depth_norm], dims=['station', 'time'], coords={'time':measurement_times, 'station':station})
+        flag_depth_norm[np.where(flag_depth_norm != 1)] = 0
+        flag_depth = flag_depth_norm
+        flag_depth_da = xr.DataArray([flag_depth_norm], dims=['station', 'time'], coords={'time':measurement_times, 'station':station})
         
-#     if '2018' in str(start_time_dt64) and glacier_front != 'Kong Oscar glacier':
-#         window_low = np.mean(depth_da[30000:-20000]) - 1.5
-#         window_high = np.mean(depth_da[30000:-20000]) + 1.5
+    if '2018' in str(start_time_dt64) and glacier_front != 'Kong Oscar glacier':
+        window_low = np.mean(depth_da.isel(station=0)[30000:-20000]) - 1.5
+        window_high = np.mean(depth_da.isel(station=0)[30000:-20000]) + 1.5
         
-#         flag_depth = depth_da.copy(deep=True)
-#         flag_depth[np.where((depth_da < window_low) | (depth_da > window_high))] = 1
-#         flag_depth[np.where(flag_depth != 1)] = 0
-#         flag_depth_da = xr.DataArray([flag_depth], dims=['station', 'time'], coords={'time':measurement_times, 'station':station})
+        flag_depth = depth_da.isel(station=0).copy(deep=True)
+        flag_depth[np.where((depth_da.isel(station=0) < window_low) | (depth_da.isel(station=0) > window_high))] = 1
+        flag_depth[np.where(flag_depth != 1)] = 0
+        flag_depth_da = xr.DataArray([flag_depth], dims=['station', 'time'], coords={'time':measurement_times, 'station':station})
         
-#     ## 2020
-#     if '2019' in str(start_time_dt64):
-#         window_low = np.mean(depth_da[30000:-227520]) - 1.5
-#         window_high = np.mean(depth_da[30000:-227520]) + 1.5
+    ## 2020
+    if '2019' in str(start_time_dt64):
+        window_low = np.mean(depth_da.isel(station=0)[30000:-227520]) - 1.5
+        window_high = np.mean(depth_da.isel(station=0)[30000:-227520]) + 1.5
         
-#         flag_depth = depth_da.copy(deep=True)
-#         flag_depth[np.where((depth_da < window_low) | (depth_da > window_high))] = 1
-#         flag_depth[np.where(flag_depth != 1)] = 0
-#         flag_depth_da = xr.DataArray([flag_depth], dims=['station', 'time'], coords={'time':measurement_times, 'station':station})
+        flag_depth = depth_da.isel(station=0).copy(deep=True)
+        flag_depth[np.where((depth_da.isel(station=0) < window_low) | (depth_da.isel(station=0) > window_high))] = 1
+        flag_depth[np.where(flag_depth != 1)] = 0
+        flag_depth_da = xr.DataArray([flag_depth], dims=['station', 'time'], coords={'time':measurement_times, 'station':station})
     
     ## add metadata to data arrays
     lat_da.name = 'latitude'
@@ -289,31 +289,26 @@ def create_Dataset(glacier_front, data_lines, start_time_dt64, sample_interval_t
     temperature_da.attrs['valid_min'] = float(-2.2)
     temperature_da.attrs['valid_max'] = float(35)
     
-    # flag_depth_da.name = 'flag_depth'
-    # flag_depth_da.attrs['long_name'] = 'quality flag for depth measurements'
-    # flag_depth_da.attrs['standard_name'] = 'quality_flag'
-    # flag_depth_da.attrs['units'] = '1'
-    # flag_depth_da.attrs['flag_values'] = float(0), float(1)
-    # flag_depth_da.attrs['flag_meanings'] = 'depth_consistent depth_spike'
-    # flag_depth_da.attrs['coverage_content_type'] = 'qualityInformation'
-    # flag_depth_da.attrs['comments'] = "Recommended to use flag_depth=0 for consistent results. flag_depth=1 marks any spikes in depth observations when mooring instruments were pushed down (e.g., from icebergs)."
+    flag_depth_da.name = 'flag_depth'
+    flag_depth_da.attrs['long_name'] = 'quality flag for depth measurements'
+    flag_depth_da.attrs['standard_name'] = 'quality_flag'
+    flag_depth_da.attrs['units'] = '1'
+    flag_depth_da.attrs['flag_values'] = float(0), float(1)
+    flag_depth_da.attrs['flag_meanings'] = 'depth_consistent depth_spike'
+    flag_depth_da.attrs['coverage_content_type'] = 'qualityInformation'
+    flag_depth_da.attrs['comments'] = "Recommended to use flag_depth=0 for consistent results. flag_depth=1 marks any spikes in depth observations when mooring instruments were pushed down (e.g., from icebergs)."
     
-    # # merge together the different xarray DataArray objects
-    # mooring_ds = xr.merge([lat_da, lon_da, conductivity_da,density_da, depth_da,\
-    #                    potential_temperature_da, pressure_da,\
-    #                    salinity_da, temperature_da, flag_depth_da],
-    #                   combine_attrs='drop_conflicts')
     # merge together the different xarray DataArray objects
     mooring_ds = xr.merge([lat_da, lon_da, conductivity_da,density_da, depth_da,\
                        potential_temperature_da, pressure_da,\
-                       salinity_da, temperature_da],
+                       salinity_da, temperature_da, flag_depth_da],
                       combine_attrs='drop_conflicts')
     
     # add time and station dimension attributes
-    mooring_ds.time.attrs['long_name'] = 'station'
-    mooring_ds.time.attrs['standard_name'] = 'station'
-    mooring_ds.time.attrs['coverage_content_type'] = 'coordinate'
-    mooring_ds.time.attrs['comments'] = 'One of three ocean mooring sites: Rink/Fisher, Kong Oscar, and Sverdrup.'
+    mooring_ds.station.attrs['long_name'] = 'station'
+    mooring_ds.station.attrs['standard_name'] = 'station'
+    mooring_ds.station.attrs['coverage_content_type'] = 'coordinate'
+    mooring_ds.station.attrs['comments'] = 'One of three ocean mooring sites in Melville Bay: Rink/Fisher, Kong Oscar, and Sverdrup.'
     
     mooring_ds.time.attrs['long_name'] = 'time'
     mooring_ds.time.attrs['standard_name'] = 'time'
@@ -336,7 +331,7 @@ def add_metadata(mooring_ds, uuid, glacier_front, bottom_depth, netcdf_filename,
     
     ## add attributes to dataset
     mooring_ds.attrs['title'] = 'OMG Narwhals Moored CTD Level 2 Data'
-    mooring_ds.attrs['summary'] = 'This dataset contains conductivity, temperature, and pressure measurements from a CTD instrument attached to an ocean mooring. It also contains derived variables: depth, salinity, density, and potential temperature. This dataset was collected by the Oceans Melting Greenland (OMG) Narwhals program that provides two years of oceanographic measurements from Melville Bay, northwest Greenland. Between July 2018 to July 2020, three bottom-mounted moorings with a suite of instrumentation were deployed in front of three glaciers: Sverdrup Glacier, Kong Oscar Glacier, and Rink Glacier.'
+    mooring_ds.attrs['summary'] = 'This dataset contains conductivity, temperature, and pressure measurements from a CTD instrument attached to an ocean mooring. It also contains derived variables: depth, salinity, density, and potential temperature. This dataset was collected by the Oceans Melting Greenland (OMG) Narwhals program that provides two years of oceanographic measurements from Melville Bay, northwest Greenland. Between August 2018 to August 2020, three bottom-mounted moorings with a suite of instrumentation were deployed in front of three glaciers: Sverdrup Glacier, Kong Oscar Glacier, and Rink Glacier.'
     mooring_ds.attrs['keywords'] = 'Conductivity, Salinity, Water Depth, Water Temperature'
     mooring_ds.attrs['keywords_vocabulary'] = 'NASA Global Change Master Directory (GCMD) Science Keywords'
     mooring_ds.attrs['Conventions'] = 'CF-1.8, ACDD-1.3'
@@ -346,7 +341,6 @@ def add_metadata(mooring_ds, uuid, glacier_front, bottom_depth, netcdf_filename,
     mooring_ds.attrs['featureType'] = "timeSeries"
     mooring_ds.attrs['cdm_data_type'] = "Station"
     mooring_ds.attrs['platform'] = 'mooring'
-    mooring_ds.attrs['mooring_deployment'] = '2018-2019'
     mooring_ds.attrs['region'] = 'Melville Bay, northwest Greenland'
     mooring_ds.attrs['glacier_front'] = glacier_front
     mooring_ds.attrs['bottom_depth'] = bottom_depth

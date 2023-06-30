@@ -10,7 +10,7 @@ from pathlib import Path
 from pprint import pprint
 import xarray as xr
 import netCDF4 as nc4
-
+from datetime import datetime
 
 ## Function open_omg_file() to open file and extract header
 def open_omg_file(file):
@@ -89,12 +89,23 @@ def open_omg_file(file):
         sample_interval_td64 = np.timedelta64(sample_interval[0], 'm')
     elif sample_interval[1] == 'hours':
         sample_interval_td64 = np.timedelta64(sample_interval[0], 'h')
+    
+    # make object for sample interval to use in global attributes of final dataset
+    sample_interval_iso = 'P' + sample_interval[0] + 'S'
             
-    return(data_lines, device_type, serial_number, start_time_dt64, start_date, sample_interval_plain, sample_interval_td64, var_names)
+    return(data_lines, device_type, serial_number, start_time_dt64, sample_interval_td64, sample_interval_iso, var_names)
 
 ## Function create_Dataset()
 ### extracts data and creates xarray data arrays and then a DataSet Object (collection of all DataArray objects)
-def create_Dataset(data_lines, start_time_dt64, sample_interval_td64, glacier_front, probe_num):
+def create_Dataset(data_lines, start_time_dt64, sample_interval_td64, glacier_front, lat, lon):
+    # identify which 'station' or site the data are from
+    if glacier_front == 'Rink glacier':
+        station = ['Rink/Fisher']
+    if glacier_front == 'Sverdrup glacier':
+        station = ['Sverdrup']
+    if glacier_front == 'Kong Oscar glacier':
+        station = ['Kong Oscar']
+    
     # extract out numbers from the text data lines
     data_list =[]
     
@@ -136,8 +147,12 @@ def create_Dataset(data_lines, start_time_dt64, sample_interval_td64, glacier_fr
     end_time = measurement_times[len(measurement_times)-1]
     print('recording end time: ', end_time)
     
+    # Create DataArray Objects for lat/lon variables and add the station coordinate
+    lat_da = xr.DataArray(lat, dims=['station'], coords={'station':station})
+    lon_da = xr.DataArray(lon, dims=['station'], coords={'station':station})
+    
     ## Create DataArray Objects from the measurements, add the measurement time coordinate
-    temperature_da = xr.DataArray(temperature, dims='time', coords={'time':measurement_times})
+    temperature_da = xr.DataArray([temperature], dims=['station','time'], coords={'time':measurement_times, 'station':station})
     
     ## SANITY CHECK PLOTS ---------------------------------------------------------------
     
@@ -177,75 +192,121 @@ def create_Dataset(data_lines, start_time_dt64, sample_interval_td64, glacier_fr
     
     ## ----------------------------------------------------------------------------------
     
-    ## add metadata to data array
+    ## add metadata to data arrays
     temperature_da.name = 'temperature'
-    temperature_da.attrs['units'] = 'C'
-    temperature_da.attrs['seabird_var_name'] = 't090C'
+    temperature_da.attrs['long_name'] = 'sea water temperature'
+    temperature_da.attrs['standard_name'] = 'sea_water_temperature'
+    temperature_da.attrs['units'] = 'degrees_C'
+    temperature_da.attrs['coverage_content_type'] = 'physicalMeasurement'
+    temperature_da.attrs['seabird_var_name'] = 'tv290C'
     temperature_da.attrs['comments'] = 'ITS-90'
-    temperature_da.attrs['Probe_num'] = probe_num  
+    temperature_da.attrs['valid_min'] = float(-2.2)
+    temperature_da.attrs['valid_max'] = float(35)
+
+    lat_da.name = 'latitude'
+    lat_da.attrs['long_name'] = 'station latitude'
+    lat_da.attrs['standard_name'] = 'latitude'
+    lat_da.attrs['units'] = 'degrees_north'
+    lat_da.attrs['coverage_content_type'] = 'coordinate'
+    lat_da.attrs['comments'] = 'Latitude of mooring location.'
     
-    # make it a dataset
-    mooring_ds = temperature_da.to_dataset()
+    lon_da.name = 'longitude'
+    lon_da.attrs['long_name'] = 'station longitude'
+    lon_da.attrs['standard_name'] = 'longitude'
+    lon_da.attrs['units'] = 'degrees_east'
+    lon_da.attrs['coverage_content_type'] = 'coordinate'
+    lon_da.attrs['comments'] = 'Longitude of mooring location.'
+    
+    # merge together the different xarray DataArray objects
+    mooring_ds = xr.merge([lat_da, lon_da, temperature_da],
+                      combine_attrs='drop_conflicts')
+    
+    # add time and station dimension attributes
+    mooring_ds.station.attrs['long_name'] = 'station'
+    mooring_ds.station.attrs['standard_name'] = 'station'
+    mooring_ds.station.attrs['coverage_content_type'] = 'coordinate'
+    mooring_ds.station.attrs['comments'] = 'One of three ocean mooring sites in Melville Bay: Rink/Fisher, Kong Oscar, and Sverdrup.'
+    
+    mooring_ds.time.attrs['long_name'] = 'time'
+    mooring_ds.time.attrs['standard_name'] = 'time'
+    mooring_ds.time.attrs['axis'] = 'T'
+    mooring_ds.time.attrs['coverage_content_type'] = 'coordinate'
     
     return(mooring_ds)
 
 ## Function add_metadata() to add global attributes
 
-def add_metadata(mooring_ds, uuid, lat, lon, glacier_front, bottom_depth, depth_target, depth_actual, netcdf_filename, start_date, sample_interval_plain, serial_number, device_type, probe_num):
-    # get start and end dates
-    start_date = str(mooring_ds.isel(time=0).time.values)[0:10]
-    end_date   = str(mooring_ds.isel(time=-1).time.values)[0:10]
+def add_metadata(mooring_ds, uuid, glacier_front, bottom_depth, depth_target, depth_actual, netcdf_filename, serial_number, device_type, probe_num, sample_interval_iso):
+    
+    # get recording duration from start and end times
+    start_time = mooring_ds.time[0].values
+    end_time = mooring_ds.time[-1].values
+    tdelta = pd.Timedelta(end_time - start_time).isoformat()
     
     # clear copied attributes from merge
     mooring_ds.attrs = ''
     
     ## add attributes to dataset
-    mooring_ds.attrs['title'] = 'OMG Narwhals mooring temperature logger Level 1 Data'
-    mooring_ds.attrs['summary'] = 'This dataset contains temperature measurements from a temperature logger sensor that was attached to an ocean mooring. This dataset was collected by the Oceans Melting Greenland (OMG) Narwhals program that will provide subannual hydrographic variability measurements in three northwest Greenland fjords. Between July 2018 to July 2020, three bottom-mounted moorings with a suite of instrumentation were deployed year-round in three glacial fjord sites in Melville Bay, West Greenland: Sverdrup Glacier, Kong Oscar Glacier, and Fisher Islands/Rink Glacier. Examination of water properties at these sites will demonstrate the presence and potential seasonality of warm, salty Atlantic Water intrusion into these marine-terminating glaciers. Additionally, during summer cruises where moorings were deployed and/or recovered, a CTD was lowered into the water to obtain full water column profiles at various locations near the glacier fronts and offshore.'
+    mooring_ds.attrs['title'] = 'OMG Narwhals Moored Temperature Logger Level 1 Data'
+    mooring_ds.attrs['summary'] = 'This dataset contains temperature measurements from a temperature logger sensor attached to an ocean mooring. This dataset was collected by the Oceans Melting Greenland (OMG) Narwhals program that provides two years of oceanographic measurements from Melville Bay, northwest Greenland. Between August 2018 to August 2020, three bottom-mounted moorings with a suite of instrumentation were deployed in front of three glaciers: Sverdrup Glacier, Kong Oscar Glacier, and Rink Glacier.'
     mooring_ds.attrs['keywords'] = 'Water Temperature'
     mooring_ds.attrs['keywords_vocabulary'] = 'NASA Global Change Master Directory (GCMD) Science Keywords'
-    mooring_ds.attrs['id'] = 'OMG_Narwhals_Mooring_temp_L1'
+    mooring_ds.attrs['Conventions'] = 'CF-1.8, ACDD-1.3'
+    mooring_ds.attrs['standard_name_vocabulary'] = 'NetCDF Climate and Forecast (CF) Metadata Convention'
+    mooring_ds.attrs['id'] = 'OMG_Narwhals_Mooring_Temp_L1'
     mooring_ds.attrs['uuid'] = uuid
-    mooring_ds.attrs['platform'] = 'R/V Sanna'
-    mooring_ds.attrs['mooring_deployment'] = '2018-2019'
-    mooring_ds.attrs['mooring_latitude'] = lat
-    mooring_ds.attrs['mooring_longitude'] = lon
-    mooring_ds.attrs['region'] = 'Melville Bay, West Greenland'
-    mooring_ds.attrs['start_date'] = start_date
-    mooring_ds.attrs['end_date'] = end_date
+    mooring_ds.attrs['featureType'] = "timeSeries"
+    mooring_ds.attrs['cdm_data_type'] = "Station"
+    mooring_ds.attrs['platform'] = 'mooring'
+    mooring_ds.attrs['region'] = 'Melville Bay, northwest Greenland'
     mooring_ds.attrs['glacier_front'] = glacier_front
     mooring_ds.attrs['bottom_depth'] = bottom_depth
     mooring_ds.attrs['filename'] = netcdf_filename
     mooring_ds.attrs['serial_number'] = serial_number
-    mooring_ds.attrs['device_type'] = device_type
     mooring_ds.attrs['probe_num'] = probe_num
+    mooring_ds.attrs['instrument'] = device_type
     mooring_ds.attrs['target_sensor_depth'] = depth_target
     mooring_ds.attrs['actual_sensor_depth'] = depth_actual
-    mooring_ds.attrs['sample_interval'] = sample_interval_plain
-
-    mooring_ds.attrs['source'] = 'Temperature data were collected using a temperature logger instrument purchased from Sea-Bird Electronics, Inc. that was attached to a mooring.'
+    mooring_ds.attrs['history'] = "The dataset was created from processed *.cnv files from the instrument."
+    mooring_ds.attrs['source'] = 'Temperature data were collected using temperature logger sensors purchased from Sea-Bird Electronics, Inc. that were attached to moorings.'
     mooring_ds.attrs['processing_level'] = 'L1'
-    
-    mooring_ds.attrs['acknowledgements'] = "This research was carried out by the Jet Propulsion Laboratory, managed by the California Institute of Technology under a contract with the National Aeronautics and Space Administration, the University of Washington's Applied Physics Laboratory and School of Aquatic and Fishery Sciences, and the Greenland Institute of Natural Resources."
+    mooring_ds.attrs['acknowledgement'] = "This research was carried out by the Jet Propulsion Laboratory, managed by the California Institute of Technology under a contract with the National Aeronautics and Space Administration, the University of Washington's Applied Physics Laboratory and School of Aquatic and Fishery Sciences, and the Greenland Institute of Natural Resources."
     mooring_ds.attrs['license'] = 'Public Domain'
     mooring_ds.attrs['product_version'] = '1.0'
     # mooring_ds.attrs['references'] = '' # DOI number
-    mooring_ds.attrs['creator_name'] = 'Marie J. Zahn, Kristin L. Laidre, Malene J. Simon, and Ian Fenty'
-    mooring_ds.attrs['creator_email'] = 'mzahn@uw.edu; klaidre@uw.edu; masi@natur.gl; ian.fenty@jpl.nasa.gov'
-    mooring_ds.attrs['creator_url'] = 'https://podaac.jpl.nasa.gov/'
-    mooring_ds.attrs['creator_type'] = 'group'
-    mooring_ds.attrs['creator_institution'] = 'University of Washington; Greenland Institute of Natural Resources; NASA Jet Propulsion Laboratory'
+    mooring_ds.attrs['creator_name'] = 'Marie J. Zahn'
+    mooring_ds.attrs['creator_email'] = 'mzahn@uw.edu'
+    mooring_ds.attrs['creator_type'] = 'person'
+    mooring_ds.attrs['creator_institution'] = 'University of Washington'
     mooring_ds.attrs['institution'] = 'University of Washington'
+    mooring_ds.attrs['project'] = 'Oceans Melting Greenland (OMG) Narwhals'
+    mooring_ds.attrs['contributor_name'] = 'Marie J. Zahn, Kristin L. Laidre, Malene J. Simon, Ian Fenty'
+    mooring_ds.attrs['contributor_role'] = "author, principal investigator, co-investigator, co-investigator" 
+    mooring_ds.attrs['contributor_email'] = 'mzahn@uw.edu; klaidre@uw.edu; masi@natur.gl; ian.fenty@jpl.nasa.gov'
     mooring_ds.attrs['naming_authority'] = 'gov.nasa.jpl'
-    mooring_ds.attrs['project'] = 'Oceans Melting Greenland (OMG) Narwhals project'
-    mooring_ds.attrs['program'] = 'NASA Physical Oceanography and Office of Naval Research (ONR) Marine Mammals and Biology Program'
-    mooring_ds.attrs['contributor_name'] = 'OMG Narwhals Science Team'
-    mooring_ds.attrs['contributor_role'] = 'OMG Narwhals Science Team performed mooring deployments and recoveries to collect data and performed initial processing.'
+    mooring_ds.attrs['program'] = 'NASA Earth Venture Suborbital-2 (EVS-2) and Office of Naval Research (ONR) Marine Mammals and Biology Program'
     mooring_ds.attrs['publisher_name'] = 'Physical Oceanography Distributed Active Archive Center (PO.DAAC)'
-    mooring_ds.attrs['publisher_institution'] = 'PO.DAAC'
+    mooring_ds.attrs['publisher_institution'] = 'NASA Jet Propulsion Laboratory (JPL)'
     mooring_ds.attrs['publisher_email'] = 'podaac@podaac.jpl.nasa.gov'
     mooring_ds.attrs['publisher_url'] = 'https://podaac.jpl.nasa.gov/'
     mooring_ds.attrs['publisher_type'] = 'group'
+    mooring_ds.attrs['geospatial_lat_min'] = mooring_ds.latitude.values[0]
+    mooring_ds.attrs['geospatial_lat_max'] = mooring_ds.latitude.values[0]
+    mooring_ds.attrs['geospatial_lat_units'] = "degrees_north"
+    mooring_ds.attrs['geospatial_lon_min'] = mooring_ds.longitude.values[0]
+    mooring_ds.attrs['geospatial_lon_max'] = mooring_ds.longitude.values[0]
+    mooring_ds.attrs['geospatial_lon_units'] = "degrees_east"
+    
+    mooring_ds.attrs['geospatial_vertical_min'] = depth_actual[:-7]
+    mooring_ds.attrs['geospatial_vertical_max'] = depth_actual[:-7]
+    mooring_ds.attrs['geospatial_vertical_units'] = 'meters'
+    mooring_ds.attrs['geospatial_vertical_positive'] = 'down'
+      
+    mooring_ds.attrs['time_coverage_resolution'] = sample_interval_iso  
+    mooring_ds.attrs['time_coverage_start'] = str(start_time)[:-10]
+    mooring_ds.attrs['time_coverage_end'] = str(end_time)[:-10]
+    mooring_ds.attrs['time_coverage_duration'] = tdelta
+    mooring_ds.attrs['date_created'] = datetime.now().strftime("%Y-%m-%dT%H:%M:%S")
     
     # with xr.set_options(display_style="html"):
     #     display(mooring_ds)
