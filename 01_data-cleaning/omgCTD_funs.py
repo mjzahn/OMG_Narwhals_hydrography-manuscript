@@ -8,7 +8,8 @@ from pathlib import Path
 from pprint import pprint
 import xarray as xr
 import netCDF4 as nc4
-
+from datetime import datetime
+import pandas as pd
 
 ## Function open_omg_file() to open file and extract header
 def open_omg_file(file, start_year, start_day, start_time_log):
@@ -59,14 +60,17 @@ def open_omg_file(file, start_year, start_day, start_time_log):
             var_names.append(h.split('# name ')[1][0:-1])        
              
     # convert start_time and sample_interval to plain language for attributes of Dataset
-    start_date = ' '.join(start_time[0:3])
+    # start_date = ' '.join(start_time[0:3])
     # start_time = ' '.join(start_time[3:4])
-    sample_interval_plain = ' '.join(sample_interval)
+    # sample_interval_plain = ' '.join(sample_interval)
+    
+    # make object for sample interval to use in global attributes of final dataset
+    sample_interval_iso = 'P' + sample_interval[0] + 'S'
     
     # Convert the measurement start time and sample interval into datetime64 objects
     # create a numpy datetime64 object corresponding with the measurement start time
     # -- need to handle the month by hand because the header records as a string (e.g., 'Aug') but we need a number
-    if start_date[1] == 'Jul':
+    if start_time[0] == 'Jul':
         start_time_str = f'{start_time[2]}-07-{start_time[1]}T{start_time[3]}'
     elif start_time[0] == 'Aug':
         start_time_str = f'{start_time[2]}-08-{start_time[1]}T{start_time[3]}'
@@ -79,6 +83,13 @@ def open_omg_file(file, start_year, start_day, start_time_log):
     start_time_dt64 = np.datetime64(start_time_str)
     print(start_time_dt64)
     
+    # get recording end time using start time and sampling duration
+    sample_interval_td64 = np.timedelta64(250,'ms') # interval is 0.25 s
+    measurement_times = []
+    for i in range(len(data_lines)):
+        measurement_times.append(start_time_dt64 + sample_interval_td64*i)
+    end_time = measurement_times[-1]
+    
     ## extract date-time for filename
     start_time_str = str(start_time_dt64)
     print(start_time_str)
@@ -89,12 +100,12 @@ def open_omg_file(file, start_year, start_day, start_time_log):
     netcdf_filename = 'OMG_Narwhals_Ocean_CTD_L2_' + start_time_filename + '.nc'
     print(netcdf_filename)
             
-    return(netcdf_filename, start_time_filename, data_lines, start_time_dt64, start_time_str, start_date, sample_interval_plain, var_names)
+    return(netcdf_filename, start_time_filename, data_lines, start_time_dt64, end_time, sample_interval_iso, var_names)
 
 
 ## Function create_Dataset()
 ### extracts data and creates xarray data arrays and then a DataSet Object (collection of all DataArray objects)
-def create_Dataset(data_lines, start_time_dt64, lat, lon):
+def create_Dataset(data_lines, start_time_dt64, lat, lon, netcdf_filename):
     data_list =[]
     
     for di, d in enumerate(data_lines):
@@ -116,7 +127,6 @@ def create_Dataset(data_lines, start_time_dt64, lat, lon):
     sound_velocity = data_array[:,5]
     density = data_array[:,6]
     potential_temperature = data_array[:,7]
-    flag = data_array[:,8]
     
     ## Create DataArray Objects from the measurements, add depth coordinate
     pressure_da = xr.DataArray(pressure, dims='depth', coords={'depth':depth})
@@ -126,56 +136,80 @@ def create_Dataset(data_lines, start_time_dt64, lat, lon):
     sound_velocity_da = xr.DataArray(sound_velocity, dims='depth', coords={'depth':depth})
     density_da = xr.DataArray(density, dims='depth', coords={'depth':depth})
     potential_temperature_da = xr.DataArray(potential_temperature, dims='depth', coords={'depth':depth})
-    flag_da = xr.DataArray(flag, dims='depth', coords={'depth':depth})
-    
+
     ## ----------------------------------------------------------------------------------
     
     ## add metadata to data arrays
     pressure_da.name = 'pressure'
-    pressure_da.attrs['units'] = 'db'
+    pressure_da.attrs['long_name'] = 'sea water pressure'
+    pressure_da.attrs['standard_name'] = 'sea_water_pressure'
+    pressure_da.attrs['units'] = 'dBar'
+    pressure_da.attrs['coverage_content_type'] = 'physicalMeasurement'
     pressure_da.attrs['seabird_var_name'] = 'prdM'
-    salinity_da.attrs['comments'] = 'Strain Gauge'
-    
-    temperature_da.name = 'temperature'
-    temperature_da.attrs['units'] = 'C'
-    temperature_da.attrs['seabird_var_name'] = 'tv290C'
-    temperature_da.attrs['comments'] = 'ITS-90'
-    
-    conductivity_da.name = 'conductivity'
-    conductivity_da.attrs['units'] = 'S/m'
-    conductivity_da.attrs['seabird_var_name'] = 'c0S/m'
-    
-    # depth_da.name = 'depth'
-    # depth_da.attrs['units'] = 'm'
-    # depth_da.attrs['seabird_var_name'] = 'depSM'
-    # depth_da.attrs['comments'] = 'lat = 75.0'
+    pressure_da.attrs['valid_min'] = float(0)
+    pressure_da.attrs['valid_max'] = float(1000)
+    pressure_da.attrs['comments'] = 'strain gauge'
     
     salinity_da.name = 'salinity'
-    salinity_da.attrs['units'] = 'PSU'
+    salinity_da.attrs['long_name'] = 'sea water practical salinity'
+    salinity_da.attrs['standard_name'] = 'sea_water_practical_salinity'
+    salinity_da.attrs['units'] = '1'
+    salinity_da.attrs['coverage_content_type'] = 'physicalMeasurement'
     salinity_da.attrs['seabird_var_name'] = 'sal00'
-    salinity_da.attrs['comments'] = 'Practical'
+    salinity_da.attrs['valid_min'] = float(0)
+    salinity_da.attrs['valid_max'] = float(45)
+    
+    temperature_da.name = 'temperature'
+    temperature_da.attrs['long_name'] = 'sea water temperature'
+    temperature_da.attrs['standard_name'] = 'sea_water_temperature'
+    temperature_da.attrs['units'] = 'degrees_C'
+    temperature_da.attrs['coverage_content_type'] = 'physicalMeasurement'
+    temperature_da.attrs['seabird_var_name'] = 'tv290C'
+    temperature_da.attrs['comments'] = 'ITS-90'
+    temperature_da.attrs['valid_min'] = float(-2.2)
+    temperature_da.attrs['valid_max'] = float(35)
+    
+    conductivity_da.name = 'conductivity'
+    conductivity_da.attrs['long_name'] = 'sea water electrical conductivity'
+    conductivity_da.attrs['standard_name'] = 'sea_water_electrical_conductivity'
+    conductivity_da.attrs['units'] = 'S/m'
+    conductivity_da.attrs['coverage_content_type'] = 'physicalMeasurement'
+    conductivity_da.attrs['seabird_var_name'] = 'cond0S/m'
+    conductivity_da.attrs['valid_min'] = float(0)
+    conductivity_da.attrs['valid_max'] = float(6)
     
     sound_velocity_da.name = 'sound_velocity'
-    sound_velocity_da.attrs['units'] = 'm/s'
+    sound_velocity_da.attrs['long_name'] = 'speed of sound in sea water'
+    sound_velocity_da.attrs['standard_name'] = 'speed_of_sound_in_sea_water'
+    sound_velocity_da.attrs['units'] = 'm s-1'
+    sound_velocity_da.attrs['coverage_content_type'] = 'physicalMeasurement'
     sound_velocity_da.attrs['seabird_var_name'] = 'svCM'
     sound_velocity_da.attrs['comments'] = 'Chen-Millero'
+    density_da.attrs['valid_min'] = float(1405)
+    density_da.attrs['valid_max'] = float(1560)
     
     density_da.name = 'density'
-    density_da.attrs['units'] = 'kg/m^3'
+    density_da.attrs['long_name'] = 'sea water density'
+    density_da.attrs['standard_name'] = 'sea_water_density'
+    density_da.attrs['units'] = 'kg m-3'
+    density_da.attrs['coverage_content_type'] = 'physicalMeasurement'
     density_da.attrs['seabird_var_name'] = 'density00'
+    density_da.attrs['valid_min'] = float(999)
+    density_da.attrs['valid_max'] = float(1045)
     
     potential_temperature_da.name = 'potential_temperature'
-    potential_temperature_da.attrs['units'] = 'C'
+    potential_temperature_da.attrs['long_name'] = 'sea water potential temperature'
+    potential_temperature_da.attrs['standard_name'] = 'sea_water_potential_temperature'
+    potential_temperature_da.attrs['units'] = 'degrees_C'
+    potential_temperature_da.attrs['coverage_content_type'] = 'physicalMeasurement'
     potential_temperature_da.attrs['seabird_var_name'] = 'potemp090C'
     potential_temperature_da.attrs['comments'] = 'ITS-90'
-    
-    flag_da.name = 'flag'
-    flag_da.attrs['units'] = ''
-    flag_da.attrs['seabird_var_name'] = 'flag'
+    potential_temperature_da.attrs['valid_min'] = float(-2.2)
+    potential_temperature_da.attrs['valid_max'] = float(35)
     
     # merge together the different xarray DataArray objects
     ctd_ds = xr.merge([pressure_da, temperature_da, conductivity_da, salinity_da, sound_velocity_da, 
-                       density_da, potential_temperature_da, flag_da], combine_attrs='drop_conflicts')
+                       density_da, potential_temperature_da], combine_attrs='drop_conflicts')
 
     # clear copied attributes from merge
     ctd_ds.attrs = ''
@@ -192,85 +226,123 @@ def create_Dataset(data_lines, start_time_dt64, lat, lon):
     
 #     return(ctd_profile_ds)
 
+    ## add coordinate for depth correction for years 2018 and 2019
+    if '2020' not in netcdf_filename: # correct depth for 2018 and 2019
+        ctd_ds = ctd_ds.assign_coords({'depth_adjust': ("depth", ctd_ds.depth.values+33)})
+        ## add attributes to describe new coordinate
+        ctd_ds.depth_adjust.attrs = ctd_ds.depth.attrs # copy depth attributes
+        ctd_ds.depth_adjust.attrs['comment'] = 'Additional depth coordinate that includes a correction of +33 meters.'
+
     ## add lat/lon and start time coordinates
-    ctd_ds = ctd_ds.assign_coords({'lat': ("profile", [lat])})
-    ctd_ds = ctd_ds.assign_coords({'lon': ("profile", [lon])})
-    ctd_ds = ctd_ds.assign_coords({'start_time': ("profile", [start_time_dt64])})
+    ctd_ds = ctd_ds.assign_coords({'latitude': ("profile", [lat])})
+    ctd_ds = ctd_ds.assign_coords({'longitude': ("profile", [lon])})
+    ctd_ds = ctd_ds.assign_coords({'time': ("profile", [start_time_dt64])})
     
     return(ctd_ds)
 
 ## Function add_metadata() to add global attributes
 
-def add_metadata(ctd_profile_ds, uuid, lat, lon, seafloor_depth, cast_depth, cast_id, start_date, netcdf_filename, sample_interval_plain):
+def add_metadata(ctd_profile_ds, uuid, seafloor_depth, cast_depth, cast_id, netcdf_filename, sample_interval_iso, end_time):
+    # get sampling duration
+    start_time = ctd_profile_ds.time[0].values
+    tdelta = pd.Timedelta(end_time - start_time).isoformat()
     
-    ## add metadata to coords
-    ctd_profile_ds.lat.attrs['long_name'] = 'latitude'
-    ctd_profile_ds.lat.attrs['unit'] = 'degrees_north'
-    ctd_profile_ds.lat.attrs['axis'] = 'Y'
-    ctd_profile_ds.lat.attrs['valid_max'] = '90.0'
-    ctd_profile_ds.lat.attrs['valid_min'] = '-90.0'
-    ctd_profile_ds.lat.attrs['comment'] = "Represents the latitudinal coordinate for where the CTD was deployed at the water's surface."
+    ## add metadata to coords   
+    ctd_profile_ds.latitude.name = 'latitude'
+    ctd_profile_ds.latitude.attrs['long_name'] = 'latitude'
+    ctd_profile_ds.latitude.attrs['standard_name'] = 'latitude'
+    ctd_profile_ds.latitude.attrs['units'] = 'degrees_north'
+    ctd_profile_ds.latitude.attrs['coverage_content_type'] = 'coordinate'
+    ctd_profile_ds.latitude.attrs['axis'] = 'Y'
+    ctd_profile_ds.latitude.attrs['valid_max'] = float(90.0)
+    ctd_profile_ds.latitude.attrs['valid_min'] = float(-90.0)
+    ctd_profile_ds.latitude.attrs['comments'] = 'Latitude of CTD location.'
     
-    ctd_profile_ds.lon.attrs['long_name'] = 'longitude'
-    ctd_profile_ds.lon.attrs['unit'] = 'degrees_west'
-    ctd_profile_ds.lon.attrs['axis'] = 'X'
-    ctd_profile_ds.lon.attrs['valid_max'] = '180.0'
-    ctd_profile_ds.lon.attrs['valid_min'] = '-180.0'
-    ctd_profile_ds.lon.attrs['comment'] = "Represents the longitudinal coordinate for where the CTD was deployed at the water's surface."
+    ctd_profile_ds.longitude.name = 'longitude'
+    ctd_profile_ds.longitude.attrs['long_name'] = 'longitude'
+    ctd_profile_ds.longitude.attrs['standard_name'] = 'longitude'
+    ctd_profile_ds.longitude.attrs['units'] = 'degrees_east'
+    ctd_profile_ds.longitude.attrs['coverage_content_type'] = 'coordinate'
+    ctd_profile_ds.longitude.attrs['axis'] = 'X'
+    ctd_profile_ds.longitude.attrs['valid_max'] = float(180.0)
+    ctd_profile_ds.longitude.attrs['valid_min'] = float(-180.0)
+    ctd_profile_ds.longitude.attrs['comments'] = 'Longitude of CTD location.'
     
-    ctd_profile_ds.start_time.attrs['comment'] = 'Represents the time at which the CTD was deployed.'
-    
-    ctd_profile_ds.depth.attrs['units'] = 'm'
+    ctd_profile_ds.time.name = 'time'
+    ctd_profile_ds.time.attrs['long_name'] = 'time'
+    ctd_profile_ds.time.attrs['standard_name'] = 'time'
+    ctd_profile_ds.time.attrs['axis'] = 'T'
+    ctd_profile_ds.time.attrs['coverage_content_type'] = 'coordinate'
+    ctd_profile_ds.time.attrs['comment'] = 'Time at which the CTD was deployed.'
+        
+    ctd_profile_ds.depth.name = 'depth'
+    ctd_profile_ds.depth.attrs['long_name'] = 'depth'
+    ctd_profile_ds.depth.attrs['standard_name'] = 'depth'
+    ctd_profile_ds.depth.attrs['units'] = 'meters'
     ctd_profile_ds.depth.attrs['positive'] = 'down'
     ctd_profile_ds.depth.attrs['axis'] = 'Z'
-    ctd_profile_ds.depth.attrs['valid_min'] = '0.0'
-    ctd_profile_ds.depth.attrs['valid_max'] = '5000.0'
+    ctd_profile_ds.depth.attrs['coverage_content_type'] = 'coordinate'
+    ctd_profile_ds.depth.attrs['seabird_var_name'] = 'depSM'
+    ctd_profile_ds.depth.attrs['valid_min'] = float(0)
+    ctd_profile_ds.depth.attrs['valid_max'] = float(3000)
     
     ## add attributes to dataset
     ctd_profile_ds.attrs['title'] = 'OMG Narwhals Ocean CTD Level 2 Data'
-    ctd_profile_ds.attrs['summary'] = 'This dataset contains conductivity, temperature, and pressure measurements from a ship-deployed CTD instrument. It also contains derived variables: salinity, sound velocity, density, and potential temperature. This profile is one of a series of CTD casts as part of the Oceans Melting Greenland (OMG) Narwhals program. OMG Narwhals will provide subannual hydrographic variability measurements in three northwest Greenland fjords. Between July 2018 to July 2020, three bottom-mounted moorings with a suite of instrumentation were deployed year-round in three glacial front sites in Melville Bay: Sverdrup Glacier, Kong Oscar Glacier, and Fisher Islands/Rink Glacier. Examination of water properties at these sites will demonstrate the presence and potential seasonality of warm, salty Atlantic Water intrusion into these coastal glaciers. During summer cruises where moorings were deployed and/or recovered, a CTD was lowered into the water to obtain full water column profiles are various locations at the glacier fronts and offshore.'
+    ctd_profile_ds.attrs['summary'] = 'This dataset contains conductivity, temperature, and pressure measurements from a ship-deployed CTD instrument. It also contains derived variables: salinity, sound velocity, density, and potential temperature. This profile is one of a series of CTD casts from the Oceans Melting Greenland (OMG) Narwhals program. Between August 2018 to August 2020, three bottom-mounted ocean moorings with a suite of instrumentation were deployed at three glacial fronts in Melville Bay: Sverdrup Glacier, Kong Oscar Glacier, and Rink Glacier. During summer cruises where moorings were deployed and/or recovered, full water column CTD profiles were obtained at the glacier fronts and offshore.'
+    ctd_profile_ds.attrs['Conventions'] = 'CF-1.8, ACDD-1.3'
     ctd_profile_ds.attrs['keywords'] = 'Conductivity, Salinity, Water Depth, Water Temperature'
     ctd_profile_ds.attrs['keywords_vocabulary'] = 'NASA Global Change Master Directory (GCMD) Science Keywords'
+    ctd_profile_ds.attrs['standard_name_vocabulary'] = 'NetCDF Climate and Forecast (CF) Metadata Convention'
     ctd_profile_ds.attrs['id'] = 'OMG_Narwhals_Ocean_CTD_L2'
     ctd_profile_ds.attrs['featureType'] = 'profile'
+    ctd_profile_ds.attrs['cdm_data_type'] = "Station"
     ctd_profile_ds.attrs['cast_id'] = cast_id
     ctd_profile_ds.attrs['uuid'] = uuid
     ctd_profile_ds.attrs['platform'] = 'R/V Sanna'
-    ctd_profile_ds.attrs['mooring_deployment'] = '2018-2019'
-    ctd_profile_ds.attrs['latitude'] = lat
-    ctd_profile_ds.attrs['longitude'] = lon
-    ctd_profile_ds.attrs['region'] = 'Melville Bay, West Greenland'
-    ctd_profile_ds.attrs['date'] = start_date
+    ctd_profile_ds.attrs['region'] = 'Melville Bay, northwest Greenland'
     ctd_profile_ds.attrs['seafloor_depth'] = seafloor_depth
     ctd_profile_ds.attrs['cast_depth'] = cast_depth
     ctd_profile_ds.attrs['filename'] = netcdf_filename
     ctd_profile_ds.attrs['serial_number'] = '1906981'
-    ctd_profile_ds.attrs['device_type'] = 'SBE19plus'
-    
-    ctd_profile_ds.attrs['source'] = 'Conductivity, Temperature and Depth (CTD) data collected from a ship-deployed CTD instrument.'
+    ctd_profile_ds.attrs['instrument'] = 'SBE19plus'
+    ctd_profile_ds.attrs['history'] = "Transformed processed *.cnv files that were converted from the instrument's output *.hex file."
+    ctd_profile_ds.attrs['source'] = 'Conductivity, Temperature, and Depth (CTD) data collected from a ship-deployed CTD instrument.'
     ctd_profile_ds.attrs['processing_level'] = 'L2'
-    
-    ctd_profile_ds.attrs['acknowledgements'] = "This research was carried out by the Jet Propulsion Laboratory, managed by the California Institute of Technology under a contract with the National Aeronautics and Space Administration, the University of Washington's Applied Physics Laboratory and School of Aquatic and Fishery Sciences, and the Greenland Institute of Natural Resources."
+    ctd_profile_ds.attrs['acknowledgement'] = "This research was carried out by the Jet Propulsion Laboratory, managed by the California Institute of Technology under a contract with the National Aeronautics and Space Administration, the University of Washington's Applied Physics Laboratory and School of Aquatic and Fishery Sciences, and the Greenland Institute of Natural Resources."
     ctd_profile_ds.attrs['license'] = 'Public Domain'
     ctd_profile_ds.attrs['product_version'] = '1.0'
     # ctd_profile_ds.attrs['references'] = '' # DOI number
-    ctd_profile_ds.attrs['creator_name'] = 'Marie J. Zahn, Kristin L. Laidre, Malene J. Simon, and Ian Fenty'
-    ctd_profile_ds.attrs['creator_email'] = 'mzahn@uw.edu; klaidre@uw.edu; masi@natur.gl; ian.fenty@jpl.nasa.gov'
-    ctd_profile_ds.attrs['creator_url'] = 'https://podaac.jpl.nasa.gov/'
-    ctd_profile_ds.attrs['creator_type'] = 'group'
-    ctd_profile_ds.attrs['creator_institution'] = 'University of Washington; Greenland Institute of Natural Resources; NASA Jet Propulsion Laboratory'
+    ctd_profile_ds.attrs['creator_name'] = 'Marie J. Zahn'
+    ctd_profile_ds.attrs['creator_email'] = 'mzahn@uw.edu'
+    ctd_profile_ds.attrs['creator_type'] = 'person'
+    ctd_profile_ds.attrs['creator_institution'] = 'University of Washington'
     ctd_profile_ds.attrs['institution'] = 'University of Washington'
+    ctd_profile_ds.attrs['project'] = 'Oceans Melting Greenland (OMG) Narwhals'
+    ctd_profile_ds.attrs['contributor_name'] = 'Marie J. Zahn, Kristin L. Laidre, Malene J. Simon, Ian Fenty'
+    ctd_profile_ds.attrs['contributor_role'] = "author, principal investigator, co-investigator, co-investigator" 
+    ctd_profile_ds.attrs['contributor_email'] = 'mzahn@uw.edu; klaidre@uw.edu; masi@natur.gl; ian.fenty@jpl.nasa.gov'
     ctd_profile_ds.attrs['naming_authority'] = 'gov.nasa.jpl'
-    ctd_profile_ds.attrs['project'] = 'Oceans Melting Greenland (OMG) Narwhals project'
-    ctd_profile_ds.attrs['program'] = 'NASA Physical Oceanography and Office of Naval Research (ONR) Marine Mammals and Biology Program'
-    ctd_profile_ds.attrs['contributor_name'] = 'OMG Narwhals Science Team'
-    ctd_profile_ds.attrs['contributor_role'] = 'OMG Narwhals Science Team performed mooring deployments and recoveries to collect data and performed initial processing.'
+    ctd_profile_ds.attrs['program'] = 'NASA Earth Venture Suborbital-2 (EVS-2) and Office of Naval Research (ONR) Marine Mammals and Biology Program'
     ctd_profile_ds.attrs['publisher_name'] = 'Physical Oceanography Distributed Active Archive Center (PO.DAAC)'
-    ctd_profile_ds.attrs['publisher_institution'] = 'PO.DAAC'
+    ctd_profile_ds.attrs['publisher_institution'] = 'NASA Jet Propulsion Laboratory (JPL)'
     ctd_profile_ds.attrs['publisher_email'] = 'podaac@podaac.jpl.nasa.gov'
     ctd_profile_ds.attrs['publisher_url'] = 'https://podaac.jpl.nasa.gov/'
     ctd_profile_ds.attrs['publisher_type'] = 'group'
-    
+    ctd_profile_ds.attrs['geospatial_lat_min'] = ctd_profile_ds.latitude.values[0]
+    ctd_profile_ds.attrs['geospatial_lat_max'] = ctd_profile_ds.latitude.values[0]
+    ctd_profile_ds.attrs['geospatial_lat_units'] = "degrees_north"
+    ctd_profile_ds.attrs['geospatial_lon_min'] = ctd_profile_ds.longitude.values[0]
+    ctd_profile_ds.attrs['geospatial_lon_max'] = ctd_profile_ds.longitude.values[0]
+    ctd_profile_ds.attrs['geospatial_lon_units'] = "degrees_east"
+    ctd_profile_ds.attrs['geospatial_vertical_min'] = ctd_profile_ds.depth_adjust.values.min()
+    ctd_profile_ds.attrs['geospatial_vertical_max'] = ctd_profile_ds.depth_adjust.values.max()
+    ctd_profile_ds.attrs['geospatial_vertical_units'] = 'meters'
+    ctd_profile_ds.attrs['geospatial_vertical_positive'] = 'down'
+    ctd_profile_ds.attrs['time_coverage_resolution'] = sample_interval_iso  
+    ctd_profile_ds.attrs['time_coverage_start'] = str(start_time)[:-10]
+    ctd_profile_ds.attrs['time_coverage_end'] = str(end_time)[:-10]
+    ctd_profile_ds.attrs['time_coverage_duration'] = tdelta
+    ctd_profile_ds.attrs['date_created'] = datetime.now().strftime("%Y-%m-%dT%H:%M:%S")
     
     # with xr.set_options(display_style="html"):
     #     display(ctd_profile_ds)
