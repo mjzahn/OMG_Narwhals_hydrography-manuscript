@@ -219,24 +219,65 @@ def create_Dataset(data_lines, start_time_dt64, lat, lon, netcdf_filename):
     # depth_below_list = list(depth_below)
     # ctd_profile_ds = ctd_ds.isel(depth=xr.DataArray(depth_below_list, dims=['profile','obs']))
     
-#     ## add lat/lon and start time coordinates
-#     ctd_profile_ds = ctd_profile_ds.assign_coords({'lat': ("profile", [lat])})
-#     ctd_profile_ds = ctd_profile_ds.assign_coords({'lon': ("profile", [lon])})
-#     ctd_profile_ds = ctd_profile_ds.assign_coords({'start_time': ("profile", [start_time_dt64])})
+    ## add metadata to coords   
+    ctd_ds.depth.name = 'depth'
+    ctd_ds.depth.attrs['long_name'] = 'depth'
+    ctd_ds.depth.attrs['standard_name'] = 'depth'
+    ctd_ds.depth.attrs['units'] = 'meters'
+    ctd_ds.depth.attrs['positive'] = 'down'
+    ctd_ds.depth.attrs['axis'] = 'Z'
+    ctd_ds.depth.attrs['coverage_content_type'] = 'coordinate'
+    ctd_ds.depth.attrs['seabird_var_name'] = 'depSM'
+    ctd_ds.depth.attrs['valid_min'] = float(0)
+    ctd_ds.depth.attrs['valid_max'] = float(3000)
     
-#     return(ctd_profile_ds)
-
     ## add coordinate for depth correction for years 2018 and 2019
     if '2020' not in netcdf_filename: # correct depth for 2018 and 2019
-        ctd_ds = ctd_ds.assign_coords({'depth_adjust': ("depth", ctd_ds.depth.values+33)})
+        ctd_ds = ctd_ds.assign_coords({'depth_correction': ("depth", ctd_ds.depth.values+33)})
         ## add attributes to describe new coordinate
-        ctd_ds.depth_adjust.attrs = ctd_ds.depth.attrs # copy depth attributes
-        ctd_ds.depth_adjust.attrs['comment'] = 'Additional depth coordinate that includes a correction of +33 meters.'
+        ctd_ds.depth_correction.name = 'depth_correction'
+        ctd_ds.depth_correction.attrs['long_name'] = 'corrected depth'
+        ctd_ds.depth_correction.attrs['standard_name'] = 'depth'
+        ctd_ds.depth_correction.attrs['units'] = 'meters'
+        ctd_ds.depth_correction.attrs['positive'] = 'down'
+        ctd_ds.depth_correction.attrs['coverage_content_type'] = 'coordinate'
+        ctd_ds.depth_correction.attrs['seabird_var_name'] = 'depSM'
+        ctd_ds.depth_correction.attrs['valid_min'] = float(0)
+        ctd_ds.depth_correction.attrs['valid_max'] = float(3000)
+        ctd_ds.depth_correction.attrs['comment'] = 'Additional depth coordinate that includes a correction of +33 meters.'
 
     ## add lat/lon and start time coordinates
     ctd_ds = ctd_ds.assign_coords({'latitude': ("profile", [lat])})
     ctd_ds = ctd_ds.assign_coords({'longitude': ("profile", [lon])})
     ctd_ds = ctd_ds.assign_coords({'time': ("profile", [start_time_dt64])})
+    
+    ## add metadata
+    ctd_ds.latitude.name = 'latitude'
+    ctd_ds.latitude.attrs['long_name'] = 'latitude'
+    ctd_ds.latitude.attrs['standard_name'] = 'latitude'
+    ctd_ds.latitude.attrs['units'] = 'degrees_north'
+    ctd_ds.latitude.attrs['coverage_content_type'] = 'coordinate'
+    ctd_ds.latitude.attrs['axis'] = 'Y'
+    ctd_ds.latitude.attrs['valid_max'] = float(90.0)
+    ctd_ds.latitude.attrs['valid_min'] = float(-90.0)
+    ctd_ds.latitude.attrs['comments'] = 'Latitude of CTD location.'
+    
+    ctd_ds.longitude.name = 'longitude'
+    ctd_ds.longitude.attrs['long_name'] = 'longitude'
+    ctd_ds.longitude.attrs['standard_name'] = 'longitude'
+    ctd_ds.longitude.attrs['units'] = 'degrees_east'
+    ctd_ds.longitude.attrs['coverage_content_type'] = 'coordinate'
+    ctd_ds.longitude.attrs['axis'] = 'X'
+    ctd_ds.longitude.attrs['valid_max'] = float(180.0)
+    ctd_ds.longitude.attrs['valid_min'] = float(-180.0)
+    ctd_ds.longitude.attrs['comments'] = 'Longitude of CTD location.'
+    
+    ctd_ds.time.name = 'time'
+    ctd_ds.time.attrs['long_name'] = 'time'
+    ctd_ds.time.attrs['standard_name'] = 'time'
+    ctd_ds.time.attrs['axis'] = 'T'
+    ctd_ds.time.attrs['coverage_content_type'] = 'coordinate'
+    ctd_ds.time.attrs['comment'] = 'Time at which the CTD was deployed.'
     
     return(ctd_ds)
 
@@ -246,45 +287,6 @@ def add_metadata(ctd_profile_ds, uuid, seafloor_depth, cast_depth, cast_id, netc
     # get sampling duration
     start_time = ctd_profile_ds.time[0].values
     tdelta = pd.Timedelta(end_time - start_time).isoformat()
-    
-    ## add metadata to coords   
-    ctd_profile_ds.latitude.name = 'latitude'
-    ctd_profile_ds.latitude.attrs['long_name'] = 'latitude'
-    ctd_profile_ds.latitude.attrs['standard_name'] = 'latitude'
-    ctd_profile_ds.latitude.attrs['units'] = 'degrees_north'
-    ctd_profile_ds.latitude.attrs['coverage_content_type'] = 'coordinate'
-    ctd_profile_ds.latitude.attrs['axis'] = 'Y'
-    ctd_profile_ds.latitude.attrs['valid_max'] = float(90.0)
-    ctd_profile_ds.latitude.attrs['valid_min'] = float(-90.0)
-    ctd_profile_ds.latitude.attrs['comments'] = 'Latitude of CTD location.'
-    
-    ctd_profile_ds.longitude.name = 'longitude'
-    ctd_profile_ds.longitude.attrs['long_name'] = 'longitude'
-    ctd_profile_ds.longitude.attrs['standard_name'] = 'longitude'
-    ctd_profile_ds.longitude.attrs['units'] = 'degrees_east'
-    ctd_profile_ds.longitude.attrs['coverage_content_type'] = 'coordinate'
-    ctd_profile_ds.longitude.attrs['axis'] = 'X'
-    ctd_profile_ds.longitude.attrs['valid_max'] = float(180.0)
-    ctd_profile_ds.longitude.attrs['valid_min'] = float(-180.0)
-    ctd_profile_ds.longitude.attrs['comments'] = 'Longitude of CTD location.'
-    
-    ctd_profile_ds.time.name = 'time'
-    ctd_profile_ds.time.attrs['long_name'] = 'time'
-    ctd_profile_ds.time.attrs['standard_name'] = 'time'
-    ctd_profile_ds.time.attrs['axis'] = 'T'
-    ctd_profile_ds.time.attrs['coverage_content_type'] = 'coordinate'
-    ctd_profile_ds.time.attrs['comment'] = 'Time at which the CTD was deployed.'
-        
-    ctd_profile_ds.depth.name = 'depth'
-    ctd_profile_ds.depth.attrs['long_name'] = 'depth'
-    ctd_profile_ds.depth.attrs['standard_name'] = 'depth'
-    ctd_profile_ds.depth.attrs['units'] = 'meters'
-    ctd_profile_ds.depth.attrs['positive'] = 'down'
-    ctd_profile_ds.depth.attrs['axis'] = 'Z'
-    ctd_profile_ds.depth.attrs['coverage_content_type'] = 'coordinate'
-    ctd_profile_ds.depth.attrs['seabird_var_name'] = 'depSM'
-    ctd_profile_ds.depth.attrs['valid_min'] = float(0)
-    ctd_profile_ds.depth.attrs['valid_max'] = float(3000)
     
     ## add attributes to dataset
     ctd_profile_ds.attrs['title'] = 'OMG Narwhals Ocean CTD Level 2 Data'
@@ -334,8 +336,8 @@ def add_metadata(ctd_profile_ds, uuid, seafloor_depth, cast_depth, cast_id, netc
     ctd_profile_ds.attrs['geospatial_lon_min'] = ctd_profile_ds.longitude.values[0]
     ctd_profile_ds.attrs['geospatial_lon_max'] = ctd_profile_ds.longitude.values[0]
     ctd_profile_ds.attrs['geospatial_lon_units'] = "degrees_east"
-    ctd_profile_ds.attrs['geospatial_vertical_min'] = ctd_profile_ds.depth_adjust.values.min()
-    ctd_profile_ds.attrs['geospatial_vertical_max'] = ctd_profile_ds.depth_adjust.values.max()
+    ctd_profile_ds.attrs['geospatial_vertical_min'] = ctd_profile_ds.depth_correction.values.min()
+    ctd_profile_ds.attrs['geospatial_vertical_max'] = ctd_profile_ds.depth_correction.values.max()
     ctd_profile_ds.attrs['geospatial_vertical_units'] = 'meters'
     ctd_profile_ds.attrs['geospatial_vertical_positive'] = 'down'
     ctd_profile_ds.attrs['time_coverage_resolution'] = sample_interval_iso  
