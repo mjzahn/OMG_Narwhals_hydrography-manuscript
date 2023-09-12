@@ -352,7 +352,7 @@ def add_metadata(mooring_ds, uuid, glacier_front, bottom_depth, netcdf_filename,
     mooring_ds.attrs['history'] = "CTD dataset was created from processed *.cnv files that were converted from the instrument's output *.hex file."
     mooring_ds.attrs['source'] = 'Temperature and salinity data were collected using Conductivity Temperature Depth (CTD) instruments purchased from Sea-Bird Electronics, Inc. that were attached to moorings.'
     mooring_ds.attrs['processing_level'] = 'L2'
-    mooring_ds.attrs['acknowledgement'] = "This research was carried out by the Jet Propulsion Laboratory, managed by the California Institute of Technology under a contract with the National Aeronautics and Space Administration, the University of Washington's Applied Physics Laboratory and School of Aquatic and Fishery Sciences, and the Greenland Institute of Natural Resources."
+    mooring_ds.attrs['acknowledgement'] = "This research was carried out by the University of Washington's Applied Physics Laboratory and School of Aquatic and Fishery Sciences, the Greenland Climate Research Centre/Greenland Institute of Natural Resources, and the Jet Propulsion Laboratory, managed by the California Institute of Technology under a contract with the National Aeronautics and Space Administration. This research was funded by the US Office of Naval Research (award no. N00014-17-1-2774) and the NASA Oceans Melting Greenland EVS-2 mission."
     mooring_ds.attrs['license'] = 'Public Domain'
     mooring_ds.attrs['product_version'] = '1.0'
     # mooring_ds.attrs['references'] = '' # DOI number

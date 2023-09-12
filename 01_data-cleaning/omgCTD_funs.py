@@ -310,7 +310,7 @@ def add_metadata(ctd_profile_ds, uuid, seafloor_depth, cast_depth, cast_id, netc
     ctd_profile_ds.attrs['history'] = "Transformed processed *.cnv files that were converted from the instrument's output *.hex file."
     ctd_profile_ds.attrs['source'] = 'Conductivity, Temperature, and Depth (CTD) data collected from a ship-deployed CTD instrument.'
     ctd_profile_ds.attrs['processing_level'] = 'L2'
-    ctd_profile_ds.attrs['acknowledgement'] = "This research was carried out by the Jet Propulsion Laboratory, managed by the California Institute of Technology under a contract with the National Aeronautics and Space Administration, the University of Washington's Applied Physics Laboratory and School of Aquatic and Fishery Sciences, and the Greenland Institute of Natural Resources."
+    ctd_profile_ds.attrs['acknowledgement'] = "This research was carried out by the University of Washington's Applied Physics Laboratory and School of Aquatic and Fishery Sciences, the Greenland Climate Research Centre/Greenland Institute of Natural Resources, and the Jet Propulsion Laboratory, managed by the California Institute of Technology under a contract with the National Aeronautics and Space Administration. This research was funded by the US Office of Naval Research (award no. N00014-17-1-2774) and the NASA Oceans Melting Greenland EVS-2 mission."
     ctd_profile_ds.attrs['license'] = 'Public Domain'
     ctd_profile_ds.attrs['product_version'] = '1.0'
     # ctd_profile_ds.attrs['references'] = '' # DOI number
@@ -336,8 +336,15 @@ def add_metadata(ctd_profile_ds, uuid, seafloor_depth, cast_depth, cast_id, netc
     ctd_profile_ds.attrs['geospatial_lon_min'] = ctd_profile_ds.longitude.values[0]
     ctd_profile_ds.attrs['geospatial_lon_max'] = ctd_profile_ds.longitude.values[0]
     ctd_profile_ds.attrs['geospatial_lon_units'] = "degrees_east"
-    ctd_profile_ds.attrs['geospatial_vertical_min'] = ctd_profile_ds.depth_correction.values.min()
-    ctd_profile_ds.attrs['geospatial_vertical_max'] = ctd_profile_ds.depth_correction.values.max()
+    
+    ## add coordinate for depth correction for years 2018 and 2019
+    if '2020' not in netcdf_filename: # correct depth for 2018 and 2019
+        ctd_profile_ds.attrs['geospatial_vertical_min'] = ctd_profile_ds.depth_correction.values.min()
+        ctd_profile_ds.attrs['geospatial_vertical_max'] = ctd_profile_ds.depth_correction.values.max()
+    if '2020' in netcdf_filename: 
+        ctd_profile_ds.attrs['geospatial_vertical_min'] = ctd_profile_ds.depth.values.min()
+        ctd_profile_ds.attrs['geospatial_vertical_max'] = ctd_profile_ds.depth.values.max()
+        
     ctd_profile_ds.attrs['geospatial_vertical_units'] = 'meters'
     ctd_profile_ds.attrs['geospatial_vertical_positive'] = 'down'
     ctd_profile_ds.attrs['time_coverage_resolution'] = sample_interval_iso  
